@@ -8,9 +8,7 @@ from Base import Base
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import pickle
-from middle_fusion_rgb_hs import Middle_fusion_en as mf_rgb_hs
-from middle_fusion_rgb_dem import Middle_fusion_en as mf_rgb_dem
-from middle_fusion_rgb_hs_dem import Middle_fusion_en as mf_rgb_hs_dem
+from middle_fusion_ import Middle_fusion_en as mf_
 # seed
 import random
 from pytorch_lightning import seed_everything
@@ -46,21 +44,14 @@ class NewArchitectures(Base):
         # middle fusion
         #TODO ajouter les valeurs de SAR data dans ledans chaques cas
         elif self.conf['method'] == 'middle_fusion':
-            if 'rgb' in self.conf['sources'] and 'hs' in self.conf['sources']:
-                self.fusion_en = mf_rgb_hs(conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
-                                        conf_hs={'channels':[182,128,64], 'kernels':[3,3]})
-                in_channels_middle_fusion = 64+64
-            elif 'rgb' in self.conf['sources'] and 'hs' in self.conf['sources'] and 'dtm' in self.conf['sources']:
-                self.fusion_en = mf_rgb_hs_dem(conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
-                                            conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
-                                            conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]})
-                in_channels_middle_fusion = 64+64+64
-            elif 'rgb' in self.conf['sources'] and 'dtm' in self.conf['sources']:
-                self.fusion_en = mf_rgb_dem(conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
-                                            conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]})
-                in_channels_middle_fusion = 64+64
+            # TODO
+            sources = self.conf['sources']
+            self.fusion_en = mf_(sources)
+            in_channels_middle_fusion = len(sources) * 64
             
-
+            
+            
+            
             # define architecture
             self.net = Unet(in_channels_middle_fusion)
             # Initialization_weight TODO
