@@ -1,0 +1,14 @@
+matplotlib
+torch
+numpy
+einops
+pytorch_lightning
+torchvision
+torchmetrics
+seaborn
+pandas
+rasterio
+segmentation_models_pytorch
+albumentations
+pytorch_lightning
+gdal==3.8.4
