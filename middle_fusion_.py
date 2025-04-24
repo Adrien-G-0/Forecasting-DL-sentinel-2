@@ -19,10 +19,10 @@ class ConvBlock_mf(nn.Module):
 
 class Middle_fusion_en(nn.Module):
     def __init__(self, sources,
-                conf_rgb={'channels':[3,3], 'kernels':[3]},
-                conf_dem={'channels':[4,4], 'kernels':[3]},
-                conf_sar={'channels':[2,2], 'kernels':[3]},
-                conf_hs={'channels':[4,4], 'kernels':[3]}
+                conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
+                conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
+                conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
+                conf_hs={'channels':[182,128,64], 'kernels':[3,3]}
                 ):
         super(Middle_fusion_en, self).__init__()
         self.sources = sources
