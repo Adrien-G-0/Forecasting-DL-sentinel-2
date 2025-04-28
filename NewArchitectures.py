@@ -22,6 +22,15 @@ class NewArchitectures(Base):
         # init base
         super(NewArchitectures, self).__init__(params)
 
+        # reorganize sources values
+        source_order = ['rgb', 'hs', 'dem', 'sar']
+        ordered_sources = []
+        for source in source_order:
+            if source in self.conf['sources']:
+                ordered_sources.append(source)
+
+        self.conf['sources'] = ordered_sources
+
         # early fusion
         if self.conf['method'] == 'early_fusion':
 
