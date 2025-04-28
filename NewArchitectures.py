@@ -28,7 +28,6 @@ class NewArchitectures(Base):
         for source in source_order:
             if source in self.conf['sources']:
                 ordered_sources.append(source)
-
         self.conf['sources'] = ordered_sources
 
         # early fusion
