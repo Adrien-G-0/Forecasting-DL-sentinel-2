@@ -72,35 +72,21 @@ class NewArchitectures(Base):
     def forward(self, batch): # identical as the KnownArchitecture but
         # with the new U-net 
 
-        rgb, hs, dtm, sar = batch
-
+        components = {}
+        for source, input_tensor in zip(self.conf['sources'], batch):
+            components[source] = input_tensor
+            
+        
         if self.conf['method'] == 'early_fusion':
             first_flag = True
-            
-            if 'rgb' in self.conf['sources']:
+            inp = None
+        
+            for source in self.conf['sources']:
                 if first_flag:
-                    inp = rgb
+                    inp = components[source]
                     first_flag = False
                 else:
-                    inp = torch.cat([inp, rgb], axis=1)
-            if 'hs' in self.conf['sources']:
-                if first_flag:
-                    inp = hs
-                    first_flag = False
-                else:
-                    inp = torch.cat([inp, hs], axis=1)
-            if 'dem' in self.conf['sources']:
-                if first_flag:
-                    inp = dtm
-                    first_flag = False
-                else:
-                    inp = torch.cat([inp, dtm], axis=1)
-            if 'sar' in self.conf['sources']:
-                if first_flag:
-                    inp = sar
-                    first_flag = False
-                else:
-                    inp = torch.cat([inp, rgb], axis=1) 
+                    inp = torch.cat([inp, components[source]], axis=1)
 
             with torch.device("meta"):
                 model = self.net
@@ -117,7 +103,7 @@ class NewArchitectures(Base):
         elif self.conf['method'] == 'middle_fusion':
             # middle fusion TODO change to use a better version that can manage all the cases at once
 
-            inp = self.fusion_en(inp)
+            inp = self.fusion_en(batch)
 
             with torch.device("meta"):
                 model = self.net
@@ -226,8 +212,19 @@ def count_parameters(model):
 
 if __name__ == '__main__':
     deb = time()
+    source=['rgb', 'hs', 'dem','sar']
+    model=mf_(source)
+    print(model)
+    inputa_rgb=torch.randn(1,3,256,256)
+    inputa_hs=torch.randn(1,182,256,256)
+    inputa_dem=torch.randn(1,1,256,256)
+    inputa_sar=torch.randn(1,2,256,256)
+    inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar]
+    output=model(inputs)
+    print(output.shape)
 
-    input_channels = 180
+    input_channels = output.shape[1]
+    print("input_channels:", input_channels)
     input_tensor = torch.randn(1, input_channels, 256, 256)
     model = Unet(input_channels=input_channels)
 
