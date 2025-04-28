@@ -29,11 +29,11 @@ class NewArchitectures(Base):
             for source in self.conf['sources']:
                 if source == 'rgb':
                     input_channels = input_channels + 3
-                if source == 'dtm':
+                if source =='dem':
                     input_channels = input_channels + 1
                 if source == 'hs':
                     input_channels = input_channels + 182
-                if source == 'SAR' :
+                if source == 'sar' :
                     input_channels = input_channels +2          
         
             # define architecture
@@ -72,16 +72,11 @@ class NewArchitectures(Base):
     def forward(self, batch): # identical as the KnownArchitecture but
         # with the new U-net 
 
-        sar, rgb, hs, dtm= batch
+        rgb, hs, dtm, sar = batch
 
         if self.conf['method'] == 'early_fusion':
             first_flag = True
-            if 'sar' in self.conf['sources']:
-                if first_flag:
-                    inp = sar
-                    first_flag = False
-                else:
-                    inp = torch.cat([inp, rgb], axis=1) 
+            
             if 'rgb' in self.conf['sources']:
                 if first_flag:
                     inp = rgb
@@ -94,12 +89,18 @@ class NewArchitectures(Base):
                     first_flag = False
                 else:
                     inp = torch.cat([inp, hs], axis=1)
-            if 'dtm' in self.conf['sources']:
+            if 'dem' in self.conf['sources']:
                 if first_flag:
                     inp = dtm
                     first_flag = False
                 else:
                     inp = torch.cat([inp, dtm], axis=1)
+            if 'sar' in self.conf['sources']:
+                if first_flag:
+                    inp = sar
+                    first_flag = False
+                else:
+                    inp = torch.cat([inp, rgb], axis=1) 
 
             with torch.device("meta"):
                 model = self.net

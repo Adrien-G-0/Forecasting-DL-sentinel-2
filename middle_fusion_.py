@@ -9,7 +9,7 @@ class ConvBlock_mf(nn.Module):
         
         layers = []
         for i in range(len(kernels)):
-            layers.append(nn.Conv2d(channels[i], channels[i+1], kernel_size=kernels[i], padding=kernels[i]//2),stride=1)
+            layers.append(nn.Conv2d(channels[i], channels[i+1], kernel_size=kernels[i], padding=kernels[i]//2,stride=1))
             layers.append(nn.ReLU(inplace=True))
         
         self.conv = nn.Sequential(*layers)
@@ -20,9 +20,9 @@ class ConvBlock_mf(nn.Module):
 class Middle_fusion_en(nn.Module):
     def __init__(self, sources,
                 conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
+                conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
                 conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
                 conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
-                conf_hs={'channels':[182,128,64], 'kernels':[3,3]}
                 ):
         super(Middle_fusion_en, self).__init__()
         self.sources = sources
@@ -95,3 +95,18 @@ class Middle_fusion_en(nn.Module):
             features.append(feature)
         
         return torch.cat(features, dim=1)
+    
+
+
+
+if __name__ == '__main__':
+        source=['rgb', 'hs', 'dem','sar']
+        model=Middle_fusion_en(source)
+        print(model)
+        inputa_rgb=torch.randn(1,3,256,256)
+        inputa_hs=torch.randn(1,182,256,256)
+        inputa_dem=torch.randn(1,1,256,256)
+        inputa_sar=torch.randn(1,2,256,256)
+        inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar]
+        output=model(inputs)
+        print(output.shape)
