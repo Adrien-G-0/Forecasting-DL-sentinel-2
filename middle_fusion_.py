@@ -63,6 +63,10 @@ class Middle_fusion_en(nn.Module):
         for source in self.sources:
             setattr(self, f'conv_{source}', self.conv[source])
     
+
+
+    ''' there are two different forward functions, one for the case when the input is a list of tensors
+    and one for the case when the input is a dictionary. The first one is used when the input is a list of tensors'''
     def forward(self, inputs):
         # inputs should be a dictionary with keys being the source names
         # and values being the corresponding input tensors

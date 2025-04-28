@@ -33,8 +33,8 @@ class NewArchitectures(Base):
                     input_channels = input_channels + 1
                 if source == 'hs':
                     input_channels = input_channels + 182
-#                 if source == 'SAR' :
-#                     input_channels = input_channels + xxx s          
+                if source == 'SAR' :
+                    input_channels = input_channels +2          
         
             # define architecture
             self.net=Unet(input_channels)
@@ -112,14 +112,9 @@ class NewArchitectures(Base):
             # apply
             return self.net(inp)
         
-        # middle fusion TODO ajouter les cas avec sar
+        
         elif self.conf['method'] == 'middle_fusion':
-            if 'rgb' in self.conf['sources'] and 'hs' in self.conf['sources']:
-                inp = rgb, hs
-            elif 'rgb' in self.conf['sources'] and 'hs' in self.conf['sources'] and 'dtm' in self.conf['sources']:
-                inp = rgb, hs, dtm
-            elif 'rgb' in self.conf['sources'] and 'dtm' in self.conf['sources']:
-                inp = rgb, dtm
+            # middle fusion TODO change to use a better version that can manage all the cases at once
 
             inp = self.fusion_en(inp)
 
