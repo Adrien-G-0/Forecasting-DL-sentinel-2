@@ -67,22 +67,23 @@ class Middle_fusion_en(nn.Module):
 
     ''' there are two different forward functions, one for the case when the input is a list of tensors
     and one for the case when the input is a dictionary. The first one is used when the input is a list of tensors'''
-    def forward(self, inputs):
-        # inputs should be a dictionary with keys being the source names
-        # and values being the corresponding input tensors
-        features = []
+    # other option with a dictionary but not used
+    # def forward(self, inputs):
+    #     # inputs should be a dictionary with keys being the source names
+    #     # and values being the corresponding input tensors
+    #     features = []
         
-        for source in self.sources:
-            if source in inputs:
-                # Process each input with its corresponding convolutional block
-                feature = self.conv[source](inputs[source])
-                features.append(feature)
+    #     for source in self.sources:
+    #         if source in inputs:
+    #             # Process each input with its corresponding convolutional block
+    #             feature = self.conv[source](inputs[source])
+    #             features.append(feature)
         
-        # Concatenate all features along the channel dimension (dim=1)
-        if features:
-            return torch.cat(features, dim=1)
-        else:
-            raise Exception("No valid inputs provided for the available sources")
+    #     # Concatenate all features along the channel dimension (dim=1)
+    #     if features:
+    #         return torch.cat(features, dim=1)
+    #     else:
+    #         raise Exception("No valid inputs provided for the available sources")
         
     def forward(self, inputs):
         # inputs is a list or tuple of tensors in the same order as self.sources
