@@ -12,3 +12,6 @@ segmentation_models_pytorch
 albumentations
 pytorch_lightning
 gdal==3.8.4
+rich 
+tensorBoard
+tensorBoardX
