@@ -4,7 +4,7 @@ numpy
 einops
 pytorch_lightning
 torchvision
-torchmetrics
+torchmetrics==1.7.1
 seaborn
 pandas
 rasterio
