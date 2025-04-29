@@ -637,17 +637,25 @@ class Base(pl.LightningModule):
                         ModelCheckpoint(monitor='soil_agricultural_use/micro/iou', mode='max', save_top_k=1, save_last=False, filename='soil_agricultural_use/micro_iou'),
                         LearningRateMonitor(logging_interval='epoch'),
                     ]
-
+            #Early Stopping
+            early_stop_callback = EarlyStopping(
+            monitor='val_loss',        # Metric to observe
+            min_delta=0.00,            # minimmum change to consider an improvement
+            patience=4,                # nbre of epoch without improvement before stopping
+            verbose=True,              # print messages of early stopping
+            mode='min',                # minimizing the metric
+            strict=True,               # if True, observed metric must be present at each epoch
+    )
            # define trainer
             trainer = pl.Trainer(
                             accelerator='gpu',
                             devices=1,
-                            max_epochs=conf['n_epochs'] if 'n_epochs' in conf else 10000000,
+                            max_epochs=conf['n_epochs'] if 'n_epochs' in conf else 1000,
                             # max_epochs=250,
                             num_sanity_val_steps = 2 if args.checkpoint == '' else 0,
                             logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
                             profiler="simple",
-                            callbacks=callbacks,
+                            callbacks=[*callbacks,early_stop_callback],
                             deterministic='warn')
             if args.checkpoint == '':
                 trainer.fit(model)
