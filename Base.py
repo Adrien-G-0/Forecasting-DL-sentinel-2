@@ -1,6 +1,7 @@
 import argparse
 import json
 import matplotlib
+import torchmetrics.segmentation
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,22 +36,22 @@ class Base(pl.LightningModule):
         self.net = None
 
          # define common arguments
-        common_args_macro_lc = {'average': 'macro', 'num_classes': self.conf['n_classes_lc'], 'ignore_index':0, 'device':self.device}
-        common_args_micro_lc = {'average': 'micro', 'num_classes': self.conf['n_classes_lc'], 'ignore_index':0, 'device':self.device}
+        common_args_macro_lc = {'average': 'macro', 'num_classes': self.conf['n_classes_lc']}   #, 'ignore_index':0}, 'device':self.device}   
+        common_args_micro_lc = {'average': 'micro', 'num_classes': self.conf['n_classes_lc']}   #, 'ignore_index':0}, 'device':self.device}  
 
-        common_args_macro_sau = {'average': 'macro', 'num_classes': self.conf['n_classes_sau'], 'ignore_index':0, 'device':self.device}
-        common_args_micro_sau = {'average': 'micro', 'num_classes': self.conf['n_classes_sau'], 'ignore_index':0, 'device':self.device}
+        common_args_macro_sau = {'average': 'macro', 'num_classes': self.conf['n_classes_sau']} #, 'ignore_index':0} 'device':self.device}  
+        common_args_micro_sau = {'average': 'micro', 'num_classes': self.conf['n_classes_sau']} #, 'ignore_index':0} 'device':self.device}  
         
         # define metrics for object
         metrics_lc = MetricCollection({
             'macro/accuracy': torchmetrics.Accuracy(task="multiclass", **common_args_macro_lc),
             'macro/iou': torchmetrics.JaccardIndex(task="multiclass", **common_args_macro_lc),
-            'macro/dice': torchmetrics.Dice(**common_args_macro_lc),
+            'macro/dice': torchmetrics.segmentation.DiceScore(**common_args_macro_lc),
             'macro/precision': torchmetrics.Precision(task='multiclass', **common_args_macro_lc, top_k=1),
             'macro/recall': torchmetrics.Recall(task='multiclass', **common_args_macro_lc, top_k=1),
             'micro/accuracy': torchmetrics.Accuracy(task="multiclass", **common_args_micro_lc),
             'micro/iou': torchmetrics.JaccardIndex(task="multiclass", **common_args_micro_lc),
-            'micro/dice': torchmetrics.Dice(**common_args_micro_lc),
+            'micro/dice': torchmetrics.segmentation.DiceScore(**common_args_micro_lc),
             'micro/precision': torchmetrics.Precision(task='multiclass', **common_args_micro_lc, top_k=1),
             'micro/recall': torchmetrics.Recall(task='multiclass', **common_args_micro_lc, top_k=1),
             })
@@ -58,12 +59,12 @@ class Base(pl.LightningModule):
         metrics_sau = MetricCollection({
             'macro/accuracy': torchmetrics.Accuracy(task="multiclass", **common_args_macro_sau),
             'macro/iou': torchmetrics.JaccardIndex(task="multiclass", **common_args_macro_sau),
-            'macro/dice': torchmetrics.Dice(**common_args_macro_sau),
+            'macro/dice': torchmetrics.segmentation.DiceScore(**common_args_macro_sau),
             'macro/precision': torchmetrics.Precision(task='multiclass', **common_args_macro_sau, top_k=1),
             'macro/recall': torchmetrics.Recall(task='multiclass', **common_args_macro_sau, top_k=1),
             'micro/accuracy': torchmetrics.Accuracy(task="multiclass", **common_args_micro_sau),
             'micro/iou': torchmetrics.JaccardIndex(task="multiclass", **common_args_micro_sau),
-            'micro/dice': torchmetrics.Dice(**common_args_micro_sau),
+            'micro/dice': torchmetrics.segmentation.DiceScore(**common_args_micro_sau),
             'micro/precision': torchmetrics.Precision(task='multiclass', **common_args_micro_sau, top_k=1),
             'micro/recall': torchmetrics.Recall(task='multiclass', **common_args_micro_sau, top_k=1),
             })
@@ -77,8 +78,8 @@ class Base(pl.LightningModule):
         self.confusionMat_lc = torchmetrics.ConfusionMatrix(task='multiclass', ignore_index=0, num_classes=self.conf['n_classes_lc'], normalize='true')
         self.confusionMat_sau = torchmetrics.ConfusionMatrix(task='multiclass', ignore_index=0, num_classes=self.conf['n_classes_sau'], normalize='true')
 
-        common_args_class_lc = {'average': 'none', 'num_classes': self.conf['n_classes_lc'], 'ignore_index':0, 'device':self.device}
-        common_args_class_sau = {'average': 'none', 'num_classes': self.conf['n_classes_sau'], 'ignore_index':0, 'device':self.device}
+        common_args_class_lc = {'average': 'none', 'num_classes': self.conf['n_classes_lc']}#, 'ignore_index':0, 'device':self.device}
+        common_args_class_sau = {'average': 'none', 'num_classes': self.conf['n_classes_sau']}#, 'ignore_index':0, 'device':self.device}
         
         metrics_class_lc = MetricCollection({
             'class/accuracy': torchmetrics.Accuracy(task="multiclass", **common_args_class_lc),

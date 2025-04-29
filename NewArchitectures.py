@@ -17,11 +17,17 @@ from pytorch_lightning.utilities import measure_flops
 
 
 
-class NewArchitectures(Base):
+class NewArchitectures(Base):#normalement Base
     def __init__(self, params):
         # init base
         super(NewArchitectures, self).__init__(params)
+        
+        # #part to test without base, juste the architecture
+        # super().__init__()
+        # self.conf=params['conf']
+        """End test"""
 
+        # print(self.conf['sources'])
         # reorganize sources values
         source_order = ['rgb', 'hs', 'dem', 'sar']
         ordered_sources = []
@@ -37,10 +43,10 @@ class NewArchitectures(Base):
             for source in self.conf['sources']:
                 if source == 'rgb':
                     input_channels = input_channels + 3
-                if source =='dem':
-                    input_channels = input_channels + 1
                 if source == 'hs':
                     input_channels = input_channels + 182
+                if source =='dem':
+                    input_channels = input_channels + 1
                 if source == 'sar' :
                     input_channels = input_channels +2          
         
@@ -65,17 +71,17 @@ class NewArchitectures(Base):
             # Initialization_weight TODO
 
 
-        self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
-        self.std_dict = self.load_dict(self.conf['std_dict_01'])
-        self.max_dict = self.load_dict(self.conf['max_dict_01'])
-        self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
-        self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
+    #     self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
+    #     self.std_dict = self.load_dict(self.conf['std_dict_01'])
+    #     self.max_dict = self.load_dict(self.conf['max_dict_01'])
+    #     self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
+    #     self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
         
-    def load_dict(self, name):
-        with open(name, 'rb') as f:
-            loaded_dict = pickle.load(f)
+    # def load_dict(self, name):
+    #     with open(name, 'rb') as f:
+    #         loaded_dict = pickle.load(f)
 
-        return loaded_dict
+    #     return loaded_dict
     
     def forward(self, batch): # identical as the KnownArchitecture but
         # with the new U-net 
