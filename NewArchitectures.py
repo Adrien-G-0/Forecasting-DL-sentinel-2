@@ -131,6 +131,110 @@ class NewArchitectures(Base):#normalement Base
 
 
 
+    def create_transform_function(self, transform_list):
+        # create function
+        def transform_inputs(inps):
+            # create transformation
+
+            rgb, hs, dem, sar, gt_lu, gt_ag = inps
+            normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
+
+            # ipdb.set_trace()
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
+                                    additional_targets={'hs': 'image',
+                                                        'dem': 'image',
+                                                        'sar': 'image',
+                                                        'gt_ag': 'mask',}) #why only gt_ag, there is no another gt?
+
+            rgb = (rgb.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
+            hs = (hs.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
+            dem = (dem.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
+            sar = (sar.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
+
+            rgb = normalize_rgb(image=rgb)['image']
+            hs = normalize_hs(image=hs)['image']
+            dem = normalize_dem(image=dem)['image']
+            sar = normalize_sar(image=sar)['image']
+
+
+            # TODO how to modify this part? 
+            sample = transforms(image=rgb,
+                                mask=gt_lu.permute(1,2,0).numpy(),
+                                hs=hs,
+                                dem=dem,
+                                sar=sar,
+                                gt_ag=gt_ag.permute(1,2,0).numpy()
+                                )
+            
+            # get images
+            rgb = sample['image']
+            gt_lu = sample['mask'].long().permute(2,0,1).squeeze(dim=0)
+            gt_ag = sample['gt_ag'].long().permute(2,0,1).squeeze(dim=0)
+            hs = sample['hs']
+            dem = sample['dem']
+            sar = sample['sar']
+
+            # return results
+            return rgb, hs, dem, sar, gt_lu, gt_ag # Change back
+
+        # return the function
+        return transform_inputs
+
+    def train_transforms(self):
+        # define training size
+        train_size = self.conf['train_size'] if 'train_size' in self.conf else self.conf['input_size']
+        # create transformation
+
+        normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
+        normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
+        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
+
+        transforms_augmentation = A.Compose([A.Resize(*self.conf['input_size']),
+            A.crops.transforms.RandomCrop(*train_size),
+            A.Rotate(limit=[-180, 180]),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.Transpose(p=0.5),
+            ToTensorV2()
+        ], is_check_shapes=False)
+
+        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+
+        # create transform function
+        return self.create_transform_function(transforms)
+        
+
+    def val_transforms(self):
+        print("self.conf keys:", self.conf.keys())
+        print("self.mean_dict:", self.mean_dict if hasattr(self, 'mean_dict') else "Not Defined")
+        print("self.std_dict:", self.std_dict if hasattr(self, 'std_dict') else "Not Defined")
+        print("self.max_dict:", self.max_dict if hasattr(self, 'max_dict') else "Not Defined")
+        normalize_rgb = A.Normalize(
+            mean=self.mean_dict['rgb'], 
+            std=self.std_dict['rgb'], 
+            max_pixel_value=self.max_dict['rgb']
+        )
+
+        # create transformation
+        normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
+        normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
+        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
+
+        transforms_augmentation = A.Compose([
+            A.Resize(*self.conf['input_size']),
+            ToTensorV2()
+        ], is_check_shapes=False)
+
+        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+    
+        # create transform function
+        return self.create_transform_function(transforms)
+    
+    def test_transforms(self):
+        return self.val_transforms()
+        
 
 
 
