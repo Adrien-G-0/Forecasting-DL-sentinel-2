@@ -11,14 +11,26 @@ with json.open('path.json', 'r') as f:
 
 
 class NewDataset_ticino(data.Dataset):
+    '''
+    Permet de creer un dataset à partir des données stockées avec un dossier pour chaque modalité et un fichier csvfile qui gère les noms des images à selectionner
+    '''
+    
 
     def __init__(self, root_dir, csv_file, pca=False, trans=None):
+        '''
+        Dataset pour structure avec fichiers nommés par modalité
+        Args:
+            root_dir (str): Dossier racine contenant dossier de modalité.
+            csv_file(csv): Odssier comprenant les indices des images à charger
+            pca (bool): Pour future compatibilité PCA.
+            trans (callable): Transformations à appliquer à (inputs, targets).
+        '''
         # save
         self.fns = pd.read_csv(csv_file, names=['fns'], header=None)
         self.root_dir = root_dir
         self.pca = pca
         self.trans = trans
-        
+    
 
     def __len__(self):
         return len(self.fns)
