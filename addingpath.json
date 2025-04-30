@@ -1,9 +1,15 @@
 {
-  "source_rgb": "",
-  "source_hs": "",
-  "source_dem": "",
+  "ticino": {
+    "source_rgb": "",
+    "source_hs": "",
+    "source_dem": "",
+    "source_sar": "",
 
-  "source_sar": "",
-  "source_land_use": "",
-  "source_agriculture": ""
+    "source_land_use": "",
+    "source_agriculture": ""
+  },
+
+  "global": {
+    "source": ""
+  }
 }
