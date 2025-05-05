@@ -50,7 +50,7 @@ class Dataset(data.Dataset):
         imgs = []
         for cur_source in sources:
             try:
-                print(f"Chargement de la source : {cur_source}")
+                # print(f"Chargement de la source : {cur_source}")
                 
                 imgs.append(self.read_tif(
                     cur_source, 
@@ -72,8 +72,8 @@ class Dataset(data.Dataset):
             raise
         
         # Application des transformations si nécessaire
-        if self.trans is not None:
-            imgs = self.trans(imgs)
+        # if self.trans is not None:
+        #     imgs = self.trans(imgs)
         
         # Séparation des entrées et cibles
         inputs = imgs[:num_modalities]

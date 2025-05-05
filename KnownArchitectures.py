@@ -13,6 +13,8 @@ from middle_fusion_rgb_hs_dem import Middle_fusion_en as mf_rgb_hs_dem
 from middle_fusion_rgb_sar import Middle_fusion_en as mf_rgb_sar
 from middle_fusion_rgb_hs_sar import Middle_fusion_en as mf_rgb_hs_sar
 from middle_fusion_sar_hs import Middle_fusion_en as mf_sar_hs
+from middle_fusion_hs_dem_sar import Middle_fusion_en as mf_hs_dem_sar
+from middle_fusion_rgb_dem_sar import Middle_fusion_en as mf_rgb_dem_sar
 # seed random.seed(seed), torch.manual_seed(seed), np.random.seed(seed): 
 # Ensures the same random numbers are generated across different runs for reproducibility.
 import random 
@@ -98,6 +100,19 @@ class KnownArchitectures(Base):
                 self.fusion_en = mf_sar_hs(conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
                                            conf_hs={'channels':[182,128,64], 'kernels':[3,3]})
                 in_channels_middle_fusion = 64+64  
+
+            elif 'dtm' in self.conf['sources'] and 'hs' in self.conf['sources'] and 'sar' in self.conf['sources']:
+                self.fusion_en = mf_hs_dem_sar(conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
+                                   conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
+                                   conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]})
+                in_channels_middle_fusion = 64+64+64
+
+            elif 'rgb' in self.conf['sources'] and 'dtm' in self.conf['sources'] and 'sar' in self.conf['sources']:
+                self.fusion_en = mf_rgb_dem_sar(conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
+                                    conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
+                                    conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]})
+                in_channels_middle_fusion = 64+64+64
+
 
             # define architecture
             self.net = smp.Unet(

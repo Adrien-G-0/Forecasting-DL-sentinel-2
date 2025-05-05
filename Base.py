@@ -639,7 +639,7 @@ class Base(pl.LightningModule):
                     ]
             #Early Stopping
             early_stop_callback = EarlyStopping(
-            monitor='val_loss',        # Metric to observe
+            monitor='losses/total',        # Metric to observe
             min_delta=0.00,            # minimmum change to consider an improvement
             patience=4,                # nbre of epoch without improvement before stopping
             verbose=True,              # print messages of early stopping
