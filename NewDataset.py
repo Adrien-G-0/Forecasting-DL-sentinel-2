@@ -129,7 +129,7 @@ class NewDatasetGlobal(data.Dataset):
             img = self.read_tif(path)
             targets.append(torch.from_numpy(img).long().squeeze(-1))
 
-        if self.trans:
+        if self.trans is not None:
             inputs, targets = self.trans((inputs, targets))
 
         return inputs, targets, folder

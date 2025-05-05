@@ -71,17 +71,17 @@ class NewArchitectures(Base):#normalement Base
             # Initialization_weight TODO
 
 
-    #     self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
-    #     self.std_dict = self.load_dict(self.conf['std_dict_01'])
-    #     self.max_dict = self.load_dict(self.conf['max_dict_01'])
-    #     self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
-    #     self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
-        
-    # def load_dict(self, name):
-    #     with open(name, 'rb') as f:
-    #         loaded_dict = pickle.load(f)
+        self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
+        self.std_dict = self.load_dict(self.conf['std_dict_01'])
+        self.max_dict = self.load_dict(self.conf['max_dict_01'])
+        self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
+        self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
 
-    #     return loaded_dict
+    def load_dict(self, name):
+        with open(name, 'rb') as f:
+            loaded_dict = pickle.load(f)
+
+        return loaded_dict
     
     def forward(self, batch): # identical as the KnownArchitecture but
         # with the new U-net 
@@ -135,7 +135,7 @@ class NewArchitectures(Base):#normalement Base
         # create function
         def transform_inputs(inps):
             # create transformation
-
+            print("inps:",inps[0].shape, inps[1].shape, inps[2].shape,inps[3].shape)
             rgb, hs, dem, sar, gt_lu, gt_ag = inps
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
 
@@ -329,62 +329,29 @@ def count_parameters(model):
 
 
 if __name__ == '__main__':
-    deb = time()
-    source=['rgb', 'hs', 'dem','sar']
-    model=mf_(source)
-    print(model)
-    inputa_rgb=torch.randn(1,3,256,256)
-    inputa_hs=torch.randn(1,182,256,256)
-    inputa_dem=torch.randn(1,1,256,256)
-    inputa_sar=torch.randn(1,2,256,256)
-    inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar]
-    output=model(inputs)
-    print(output.shape)
-
-    input_channels = output.shape[1]
-    print("input_channels:", input_channels)
-    input_tensor = torch.randn(1, input_channels, 256, 256)
-    model = Unet(input_channels=input_channels)
-
-    print("=== ENCODING ===")
-    x, residual1 = model.encoder1(input_tensor)
-    print("encoder1 -> x:", x.size(), "| residual1:", residual1.size())
-
-    x, residual2 = model.encoder2(x)
-    print("encoder2 -> x:", x.size(), "| residual2:", residual2.size())
-
-    x, residual3 = model.encoder3(x)
-    print("encoder3 -> x:", x.size(), "| residual3:", residual3.size())
-
-    x, residual4 = model.encoder4(x)
-    print("encoder4 -> x:", x.size(), "| residual4:", residual4.size())
-
-    print("\n=== BOTTLENECK ===")
-    x = model.bottleneck(x)
-    print("bottleneck -> x:", x.size())
-
-    print("\n=== DECODING ===")
-    x = model.decoder1(x, residual4)
-    print("decoder1 -> x:", x.size())
-
-    x = model.decoder2(x, residual3)
-    print("decoder2 -> x:", x.size())
-
-    x = model.decoder3(x, residual2)
-    print("decoder3 -> x:", x.size())
-
-    x = model.decoder4(x, residual1)
-    print("decoder4 -> x:", x.size())
-
-    print("\n=== OUTPUT ===")
-    output = model.activation(x)
-    print("input_tensor:", input_tensor.size())
-    print("output:", output.size())
-
-    print('\nTemps pour un passage dans le modèle pour une image :', round(time()-deb,3),'s')
-        
-    num_params = count_parameters(model)
-    print(f"Le modèle a {num_params} paramètres.")
+    # deb = time()
+    # source=['rgb', 'hs', 'dem','sar']
+    # model=mf_(source)
+    # print(model)
+    # inputa_rgb=torch.randn(1,3,256,256)
+    # inputa_hs=torch.randn(1,182,256,256)
+    # inputa_dem=torch.randn(1,1,256,256)
+    # inputa_sar=torch.randn(1,2,256,256)
+    # inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar]
+    # output=model(inputs)
+    # print(output.shape)
+    # fin = time()
+    # print("Time:", fin-deb)
     
+
+    # train or test
+    seed = 42
+    random.seed(seed)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    seed_everything(seed, workers=True)
+    torch.backends.cudnn.deterministic = True
+
+    Base.main(NewArchitectures)
 
     
