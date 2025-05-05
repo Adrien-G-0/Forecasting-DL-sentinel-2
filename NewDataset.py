@@ -6,7 +6,7 @@ import torch.utils.data as data
 import rasterio as rs
 import json
 
-with json.open('path.json', 'r') as f:
+with open('path.json', 'r') as f:
     path_sources = json.load(f)
 
 
