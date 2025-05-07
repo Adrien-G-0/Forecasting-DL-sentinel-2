@@ -30,7 +30,11 @@ class NewDataset_ticino(data.Dataset):
         self.root_dir = root_dir
         self.pca = pca
         self.trans = trans
-    
+
+        # Définit les types de données attendus (ordre : inputs puis targets)
+        
+        self.input_types = ['RGB', 'pansh_data', 'DTM', 'SAR']
+        self.target_types = ['ndvi'] 
 
     def __len__(self):
         return len(self.fns)
@@ -45,13 +49,6 @@ class NewDataset_ticino(data.Dataset):
         if data.ndim < 3:
             data = np.expand_dims(data, axis=-1)
         return data
-    '''pour le ticino, il y a un répertoire par type de données donc on cherche dans chaque répertoire le fichier correspondant '''
-    def __getitem__(self, idx): # pour le format des données ticino
-        
-        # load them
-        imgs = []
-        for cur_source in path_sources: # rgb,hs,dem,sar,    landuse,agriculture
-            imgs.append(self.read_tif(cur_source, self.fns.iloc[idx]['fns']))
 
         # make them proper type
         num_modalities = 4
@@ -66,7 +63,10 @@ class NewDataset_ticino(data.Dataset):
 
         return inputs, targets, self.fns.iloc[idx]['fns']
     
+        if self.trans is not None:
+            inputs, targets = self.trans((inputs, targets))
 
+        return inputs, targets, folder
     
 
 

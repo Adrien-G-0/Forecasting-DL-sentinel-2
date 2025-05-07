@@ -66,7 +66,8 @@ class NewBase(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        inputs, targets = batch
+        
+        inputs, targets, _= batch
 
         # Calculer les prédictions
         predictions = self(inputs)
