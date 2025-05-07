@@ -4,7 +4,7 @@ from torch.nn import Sequential
 from time import time
 
 import segmentation_models_pytorch as smp
-from Base import Base
+from NewBase import Base
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import pickle
@@ -22,6 +22,14 @@ class NewArchitectures(Base):#normalement Base
         # init base
         super(NewArchitectures, self).__init__(params)
         
+        
+        # #part to test without base, juste the architecture
+        # super().__init__()
+        # self.conf=params['conf']
+        """End test"""
+
+        # print(self.conf['sources'])
+
         # #part to test without base, juste the architecture
         # super().__init__()
         # self.conf=params['conf']
@@ -56,7 +64,6 @@ class NewArchitectures(Base):#normalement Base
 
 
         # middle fusion
-        #TODO ajouter les valeurs de SAR data dans ledans chaques cas
         elif self.conf['method'] == 'middle_fusion':
             # TODO
             sources = self.conf['sources']
@@ -100,6 +107,7 @@ class NewArchitectures(Base):#normalement Base
                     inp = components[source]
                     first_flag = False
                 else:
+                    print(inp.shape, components[source].shape)
                     inp = torch.cat([inp, components[source]], axis=1)
 
             with torch.device("meta"):
@@ -135,22 +143,37 @@ class NewArchitectures(Base):#normalement Base
         # create function
         def transform_inputs(inps):
             # create transformation
-            print("inps:",inps[0].shape, inps[1].shape, inps[2].shape,inps[3].shape)
-            rgb, hs, dem, sar, gt_lu, gt_ag = inps
+            rgb, hs, dem, sar, ndvi = inps
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
-
+            print("Structure de transform_list:", type(transform_list), transform_list)
+            
             # ipdb.set_trace()
             transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
                                     additional_targets={'hs': 'image',
                                                         'dem': 'image',
                                                         'sar': 'image',
-                                                        'gt_ag': 'mask',}) #why only gt_ag, there is no another gt?
-
+                                                        'ndvi': 'image'})
+            
             rgb = (rgb.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
             hs = (hs.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
             dem = (dem.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
             sar = (sar.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
+            #no need to normalize the ndvi because it is already between -1 and 1
+            if ndvi.dim() == 2:  # Si c'est déjà un format HxW
+                ndvi_np = ndvi.numpy()
+            else:  # Si c'est un format CxHxW avec C=1
+                ndvi_np = ndvi.squeeze(0).numpy()  # Enlever la dimension du canal et convertir en numpy
+            
+            # Ajouter une dimension pour la compatibilité avec Albumentations (qui attend HxWxC)
+            ndvi = np.expand_dims(ndvi_np, axis=2).astype(np.float32)
+            
 
+            rgb = rgb.astype(np.float32)
+            hs = hs.astype(np.float32)
+            dem = dem.astype(np.float32)
+            sar = sar.astype(np.float32)
+            ndvi = ndvi.astype(np.float32) if torch.is_tensor(ndvi) else ndvi.astype(np.float32)
+            
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
             dem = normalize_dem(image=dem)['image']
@@ -159,23 +182,21 @@ class NewArchitectures(Base):#normalement Base
 
             # TODO how to modify this part? 
             sample = transforms(image=rgb,
-                                mask=gt_lu.permute(1,2,0).numpy(),
                                 hs=hs,
                                 dem=dem,
                                 sar=sar,
-                                gt_ag=gt_ag.permute(1,2,0).numpy()
+                                ndvi=ndvi
+                                
                                 )
-            
             # get images
             rgb = sample['image']
-            gt_lu = sample['mask'].long().permute(2,0,1).squeeze(dim=0)
-            gt_ag = sample['gt_ag'].long().permute(2,0,1).squeeze(dim=0)
             hs = sample['hs']
             dem = sample['dem']
             sar = sample['sar']
+            ndvi = sample['ndvi']
 
             # return results
-            return rgb, hs, dem, sar, gt_lu, gt_ag # Change back
+            return rgb, hs, dem, sar, ndvi
 
         # return the function
         return transform_inputs
