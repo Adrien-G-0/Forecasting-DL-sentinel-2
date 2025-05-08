@@ -145,34 +145,29 @@ class NewArchitectures(Base):#normalement Base
             # create transformation
             rgb, hs, dem, sar, ndvi = inps
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
-            print("Structure de transform_list:", type(transform_list), transform_list)
-            
+            #no normalization for ndvi because it is already between -1 and 1
+            ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
+
             # ipdb.set_trace()
-            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
+            transforms = A.Compose(transforms_augmentation, is_check_shapes=False,
                                     additional_targets={'hs': 'image',
                                                         'dem': 'image',
                                                         'sar': 'image',
                                                         'ndvi': 'image'})
             
-            rgb = (rgb.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
-            hs = (hs.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
-            dem = (dem.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
-            sar = (sar.permute(1,2,0).numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
+            #No need to permute the images because transformlations is ddoing everything
+            rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
+            hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
+            dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
+            sar = (sar.numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
             #no need to normalize the ndvi because it is already between -1 and 1
-            if ndvi.dim() == 2:  # Si c'est déjà un format HxW
-                ndvi_np = ndvi.numpy()
-            else:  # Si c'est un format CxHxW avec C=1
-                ndvi_np = ndvi.squeeze(0).numpy()  # Enlever la dimension du canal et convertir en numpy
-            
-            # Ajouter une dimension pour la compatibilité avec Albumentations (qui attend HxWxC)
-            ndvi = np.expand_dims(ndvi_np, axis=2).astype(np.float32)
-            
+            ndvi = ndvi.numpy()
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
             dem = dem.astype(np.float32)
             sar = sar.astype(np.float32)
-            ndvi = ndvi.astype(np.float32) if torch.is_tensor(ndvi) else ndvi.astype(np.float32)
+            ndvi = ndvi.astype(np.float32)
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
@@ -180,7 +175,6 @@ class NewArchitectures(Base):#normalement Base
             sar = normalize_sar(image=sar)['image']
 
 
-            # TODO how to modify this part? 
             sample = transforms(image=rgb,
                                 hs=hs,
                                 dem=dem,
