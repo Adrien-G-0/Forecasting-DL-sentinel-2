@@ -22,20 +22,8 @@ class NewArchitectures(Base):#normalement Base
         # init base
         super(NewArchitectures, self).__init__(params)
         
+
         
-        # #part to test without base, juste the architecture
-        # super().__init__()
-        # self.conf=params['conf']
-        """End test"""
-
-        # print(self.conf['sources'])
-
-        # #part to test without base, juste the architecture
-        # super().__init__()
-        # self.conf=params['conf']
-        """End test"""
-
-        # print(self.conf['sources'])
         # reorganize sources values
         source_order = ['rgb', 'hs', 'dem', 'sar']
         ordered_sources = []
@@ -107,7 +95,6 @@ class NewArchitectures(Base):#normalement Base
                     inp = components[source]
                     first_flag = False
                 else:
-                    print(inp.shape, components[source].shape)
                     inp = torch.cat([inp, components[source]], axis=1)
 
             with torch.device("meta"):
@@ -117,9 +104,10 @@ class NewArchitectures(Base):#normalement Base
             model_fwd = lambda: model(x)
             fwd_flops = measure_flops(model, model_fwd)
             print("flops:" + str(fwd_flops))
+            
+            output = self.net(inp)
 
-            # apply
-            return self.net(inp)
+            return output
         
         
         elif self.conf['method'] == 'middle_fusion':
@@ -135,7 +123,9 @@ class NewArchitectures(Base):#normalement Base
             fwd_flops = measure_flops(model, model_fwd)
             print("flops:" + str(fwd_flops))
 
-            return self.net(inp)       
+            output = self.net(inp)
+            
+            return output     
 
 
 
@@ -221,16 +211,11 @@ class NewArchitectures(Base):#normalement Base
         
 
     def val_transforms(self):
-        print("self.conf keys:", self.conf.keys())
-        print("self.mean_dict:", self.mean_dict if hasattr(self, 'mean_dict') else "Not Defined")
-        print("self.std_dict:", self.std_dict if hasattr(self, 'std_dict') else "Not Defined")
-        print("self.max_dict:", self.max_dict if hasattr(self, 'max_dict') else "Not Defined")
-        normalize_rgb = A.Normalize(
-            mean=self.mean_dict['rgb'], 
-            std=self.std_dict['rgb'], 
-            max_pixel_value=self.max_dict['rgb']
-        )
-
+        # print("self.conf keys:", self.conf.keys())
+        # print("self.mean_dict:", self.mean_dict if hasattr(self, 'mean_dict') else "Not Defined")
+        # print("self.std_dict:", self.std_dict if hasattr(self, 'std_dict') else "Not Defined")
+        # print("self.max_dict:", self.max_dict if hasattr(self, 'max_dict') else "Not Defined")        
+        
         # create transformation
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
         normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
@@ -243,7 +228,7 @@ class NewArchitectures(Base):#normalement Base
         ], is_check_shapes=False)
 
         transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
-    
+        
         # create transform function
         return self.create_transform_function(transforms)
     

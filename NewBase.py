@@ -9,18 +9,24 @@ from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import RichProgressBar
 from torchvision import utils  # transforms, models, utils
-from Dataset import Dataset
+
+from NewDataset import Dataset
 from torch.optim.lr_scheduler import StepLR
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import torchmetrics
-from torchmetrics import MetricCollection
+from torchmetrics import MetricCollection,image
 import os
 import seaborn as sns
+import argparse,json
 
-class NewBase(pl.LightningModule):
+with open('path.json', 'r') as f:
+    path = json.load(f)
+
+
+class Base(pl.LightningModule):
 
     def __init__(self, params):
-        super(NewBase, self).__init__()
+        super(Base, self).__init__()
         # Sauvegarder les hyperparamètres
         self.save_hyperparameters()
         self.conf = params
@@ -32,54 +38,80 @@ class NewBase(pl.LightningModule):
         self.net = None
 
         # Définir les métriques pour l'objet
-        self.metrics = torchmetrics.MetricCollection([
-            torchmetrics.MeanAbsoluteError(),
-            torchmetrics.MeanSquaredError(),
-            torchmetrics.PeakSignalNoiseRatio(),
-            torchmetrics.StructuralSimilarityIndexMeasure(),
-            torchmetrics.PearsonCorrCoef()
-        ])
-
-        self.metrics_test = torchmetrics.MetricCollection([
-            torchmetrics.MeanAbsoluteError(prefix='test_'),
-            torchmetrics.MeanSquaredError(prefix='test_'),
-            torchmetrics.PeakSignalNoiseRatio(prefix='test_'),
-            torchmetrics.StructuralSimilarityIndexMeasure(prefix='test_'),
-            torchmetrics.PearsonCorrCoef(prefix='test_')
-        ])
+        self.metrics = torchmetrics.MetricCollection({
+            'mae': torchmetrics.MeanAbsoluteError(),
+            'mse': torchmetrics.MeanSquaredError(),
+            'psnr': torchmetrics.image.PeakSignalNoiseRatio(),
+            'ssim': torchmetrics.image.StructuralSimilarityIndexMeasure(),
+            'pearson': torchmetrics.PearsonCorrCoef()
+        })
+        self.metrics_test = torchmetrics.MetricCollection({
+            'mae': torchmetrics.MeanAbsoluteError(),
+            'mse': torchmetrics.MeanSquaredError(),
+            'psnr': torchmetrics.image.PeakSignalNoiseRatio(),
+            'ssim': torchmetrics.image.StructuralSimilarityIndexMeasure(),
+            'pearson': torchmetrics.PearsonCorrCoef()
+        }, prefix='test_')
 
     def forward(self, batch):
-        raise NotImplementedError('NewBase must be extended by child class that specifies the forward method.')
+        raise NotImplementedError('Base must be extended by child class that specifies the forward method.')
 
     def training_step(self, batch, batch_nb):
-        inputs, targets = batch
-
+        
+        inputs, targets,_ = batch
+        
         # Calculer les prédictions
+        
         predictions = self(inputs)
-
+        
+        predictions, targets = predictions.squeeze(), targets.squeeze()
         # Calculer la perte L1
+        
         loss = F.l1_loss(predictions, targets)
-
+        
         # Log des métriques
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
-
+        
         return loss
 
     def validation_step(self, batch, batch_idx):
         
         inputs, targets, _= batch
-
         # Calculer les prédictions
         predictions = self(inputs)
-
+        predictions, targets = predictions.squeeze(), targets.squeeze()
+        
         # Calculer la perte L1
         loss = F.l1_loss(predictions, targets)
-
+        
         # Log des métriques
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
-
+        
         # Mettre à jour les métriques
-        self.metrics.update(predictions, targets)
+        self.metrics['mae'].update(predictions, targets)
+        self.metrics['mse'].update(predictions, targets)
+        self.metrics['psnr'].update(predictions, targets)
+
+        # Ajustements des dimensions pour certaines métriques
+        predictions_ssim = predictions.unsqueeze(0).unsqueeze(0)  # Ajoute une dimension channel pour SSIM
+        targets_ssim = targets.unsqueeze(0).unsqueeze(0)
+
+        predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
+        targets_flat = targets.view(-1)
+
+        self.metrics['ssim'].update(predictions_ssim, targets_ssim)  # Données adaptées
+        self.metrics['pearson'].update(predictions_flat, targets_flat)  # Données adaptées
+
+
+
+    def on_validation_epoch_end(self):
+        # Calculer et logger les métriques
+        metrics = self.metrics.compute()
+        for key, value in metrics.items():
+            self.log(f"val_{key}", value, prog_bar=True)
+        
+        # Réinitialiser les métriques
+        self.metrics.reset()
 
     def test_step(self, batch, batch_idx):
         inputs, targets = batch
@@ -89,6 +121,15 @@ class NewBase(pl.LightningModule):
 
         # Mettre à jour les métriques de test
         self.metrics_test.update(predictions, targets)
+
+    def on_test_epoch_end(self):
+        # Calculer et logger les métriques de test
+        metrics = self.metrics_test.compute()
+        for key, value in metrics.items():
+            self.log(key, value)
+        
+        # Réinitialiser les métriques
+        self.metrics_test.reset()
 
     def configure_optimizers(self):
         
@@ -102,7 +143,7 @@ class NewBase(pl.LightningModule):
             params = [
                 {'params': self.net.parameters()},
             ]
-
+        # print('params', params)
 
         optimizer = torch.optim.Adam(
                             params,
@@ -116,18 +157,18 @@ class NewBase(pl.LightningModule):
     
 
     def train_dataloader(self):
-        ds = Dataset(self.conf['root_dir'], self.conf['train_csv'], self.conf['pca'], self.train_transforms())
+        ds = Dataset(root_dir=path['root_dir'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=True)
         return dl
     
     def val_dataloader(self):
-        ds = Dataset(self.conf['root_dir'], self.conf['val_csv'], self.conf['pca'], self.val_transforms())
+        ds = Dataset(root_dir=path['root_dir'], split='val', pca=self.conf['pca'], trans=self.val_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
     
     
     def test_dataloader(self):
-        ds = Dataset(self.conf['root_dir'], self.conf['test_csv'], self.conf['pca'], self.test_transforms())
+        ds = Dataset(root_dir=path['root_dir'], split='test', pca=self.conf['pca'], trans=self.train_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
 
@@ -139,3 +180,92 @@ class NewBase(pl.LightningModule):
 
     def test_transforms(self):
         return None
+    
+
+
+    @staticmethod
+    def main(cur_class):
+        # define parser
+        parser = argparse.ArgumentParser()
+        # define arguments
+        parser.add_argument("-json", "--json", help="Json (used only when training).",
+                            default='', type=str)
+        parser.add_argument("-ckp", "--checkpoint", help="Checkpoint (used only when regen/testing).",
+                            default='', type=str)
+        parser.add_argument("-out", "--out", help="Output filename.",
+                            default='', type=str)
+        parser.add_argument("-test", "--test", help="If set, computes metrics instead of regen.",
+                            action='store_true')
+        # parse args
+        args = parser.parse_args()
+
+        # check if we are in training or testing
+        if not args.test:
+            # if checkpoint not specified, load from json
+            if args.checkpoint == '':
+                # read json
+                print(args.json)
+                with open(args.json) as f:
+                    conf = json.load(f)
+                # init model
+                model = cur_class(conf)
+            else:
+                # load from checkpoint
+                model = cur_class.load_from_checkpoint(args.checkpoint)
+                conf = model.conf
+
+            # show model
+            print(model)
+
+            
+            # Define callbacks
+            callbacks = [
+                RichProgressBar(),
+                ModelCheckpoint(
+                    monitor='total', 
+                    mode='min', 
+                    save_top_k=1, 
+                    save_last=True, 
+                    filename='l1_loss'
+                ),
+                LearningRateMonitor(logging_interval='epoch'),
+            ]
+            
+            # Early Stopping
+            early_stop_callback = EarlyStopping(
+                monitor='total',           # Metric to observe
+                min_delta=0.00,            # minimum change to consider an improvement
+                patience=4,                # number of epochs without improvement before stopping
+                verbose=True,              # print messages of early stopping
+                mode='min',                # minimizing the metric
+                strict=True,               # if True, observed metric must be present at each epoch
+            )
+            
+            # Define trainer
+            trainer = pl.Trainer(
+                accelerator='gpu',
+                devices=1,
+                max_epochs=conf.get('n_epochs', 250),  # Use get() for safer dictionary access
+                num_sanity_val_steps=2 if args.checkpoint == '' else 0,
+                logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
+                profiler="simple",
+                callbacks=[*callbacks, early_stop_callback]
+                
+            )
+            
+            # Train the model
+            if args.checkpoint == '':
+                trainer.fit(model)
+            else:
+                trainer.fit(model, ckpt_path=args.checkpoint)
+                
+            # Test after training
+            trainer.test(model)
+        else:
+            # Test mode only
+            
+            model = cur_class.load_from_checkpoint(args.checkpoint)
+            conf = model.conf
+            tester = pl.Trainer()
+            tester.test(model)
+            
