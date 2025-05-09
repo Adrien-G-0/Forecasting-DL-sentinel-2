@@ -128,7 +128,19 @@ class NewArchitectures(Base):#normalement Base
         # create function
         def transform_inputs(inps):
             # create transformation
-            rgb, hs, dem, sar, ndvi = inps
+                        # Définir les sources connues
+            sources_possibles = ['rgb', 'hs', 'dem', 'sar', 'ndvi']
+            inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # Ajout de 'ndvi' à la liste des sources
+
+            # Assurer que toutes les clés sont présentes avec une valeur par défaut (None ou autre)
+            inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
+
+            # Récupérer les valeurs
+            rgb, hs, dem, sar, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['ndvi']
+
+            # rgb, hs, dem, sar, ndvi = inps
+
+
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
@@ -174,8 +186,11 @@ class NewArchitectures(Base):#normalement Base
             sar = sample['sar']
             ndvi = sample['ndvi']
 
-            # return results
-            return rgb, hs, dem, sar, ndvi
+            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar, 'ndvi': ndvi}
+            
+            output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
+            return output
+            
 
         # return the function
         return transform_inputs
