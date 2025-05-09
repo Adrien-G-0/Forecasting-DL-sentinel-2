@@ -14,7 +14,7 @@ from pytorch_lightning.utilities import measure_flops
 
 
 
-class NewArchitectures(Base):#normalement Base
+class NewArchitectures(Base):
     def __init__(self, params):
         # init base
         super(NewArchitectures, self).__init__(params)
@@ -73,8 +73,7 @@ class NewArchitectures(Base):#normalement Base
 
         return loaded_dict
     
-    def forward(self, batch): # identical as the KnownArchitecture but
-        # with the new U-net 
+    def forward(self, batch): 
 
         components = {}
         for source, input_tensor in zip(self.conf['sources'], batch):
@@ -104,7 +103,7 @@ class NewArchitectures(Base):#normalement Base
         
         
         elif self.conf['method'] == 'middle_fusion':
-            # middle fusion TODO change to use a better version that can manage all the cases at once
+            
 
             inp = self.fusion_en(batch)
 
@@ -126,17 +125,12 @@ class NewArchitectures(Base):#normalement Base
         # create function
         def transform_inputs(inps):
             # create transformation
-                        # Définir les sources connues
             sources_possibles = ['rgb', 'hs', 'dem', 'sar', 'ndvi']
-            inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # Ajout de 'ndvi' à la liste des sources
+            inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
-            # Assurer que toutes les clés sont présentes avec une valeur par défaut (None ou autre)
+            # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
             inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-
-            # Récupérer les valeurs
             rgb, hs, dem, sar, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['ndvi']
-
-            # rgb, hs, dem, sar, ndvi = inps
 
 
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
@@ -150,7 +144,7 @@ class NewArchitectures(Base):#normalement Base
                                                         'sar': 'image',
                                                         'ndvi': 'image'})
             
-            #No need to permute the images because transformlations is ddoing everything
+            #No need to permute the images because transformlations is doing everything
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
             hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
             dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
@@ -185,7 +179,7 @@ class NewArchitectures(Base):#normalement Base
             ndvi = sample['ndvi']
 
             outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar, 'ndvi': ndvi}
-            
+            # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
             

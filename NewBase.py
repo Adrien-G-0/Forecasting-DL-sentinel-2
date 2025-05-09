@@ -55,12 +55,7 @@ class Base(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         inputs, targets,_ = batch
         
-        # Calculer les prédictions
-        
         predictions = self(inputs)
-        
-        # predictions, targets = predictions.squeeze(), targets.squeeze()
-        # Calculer la perte L1
         
         loss = F.l1_loss(predictions, targets)
         # Log des métriques
@@ -73,7 +68,7 @@ class Base(pl.LightningModule):
         # Calculer les prédictions
         predictions = self(inputs)
 
-        # predictions, targets = predictions.squeeze(), targets.squeeze()
+
         # Calculer la perte L1
         loss = F.l1_loss(predictions, targets)
         # Log des métriques
@@ -82,14 +77,13 @@ class Base(pl.LightningModule):
         self.metrics['mae'].update(predictions, targets)
         self.metrics['mse'].update(predictions, targets)
         self.metrics['psnr'].update(predictions, targets)
+        self.metrics['ssim'].update(predictions, targets) 
 
         # Ajustements des dimensions pour certaines métriques
-        predictions_ssim = predictions  # Ajoute une dimension channel pour SSIM
-        targets_ssim = targets
-
         predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
         targets_flat = targets.view(-1)         # Aplatit pour Pearson
-        self.metrics['ssim'].update(predictions_ssim, targets_ssim)  
+         
+        #to avoid error when the variance is too low
         if predictions_flat.var() > 1e-3 :
             self.metrics['pearson'].update(predictions_flat, targets_flat)  # Données applaties
         else:
@@ -112,11 +106,31 @@ class Base(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         inputs, targets = batch
 
-        # Calculer les prédictions
+
         predictions = self(inputs)
 
         # Mettre à jour les métriques de test
         self.metrics_test.update(predictions, targets)
+        # Mettre à jour les métriques
+        self.metrics_test['mae'].update(predictions, targets)
+        self.metrics_test['mse'].update(predictions, targets)
+        self.metrics_test['psnr'].update(predictions, targets)
+        self.metrics_test['ssim'].update(predictions, targets) 
+
+        # Ajustements des dimensions pour certaines métriques
+        predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
+        targets_flat = targets.view(-1)         # Aplatit pour Pearson
+         
+        #to avoid error when the variance is too low
+        if predictions_flat.var() > 1e-3 :
+            self.metrics_test['pearson'].update(predictions_flat, targets_flat)  # Données applaties
+        else:
+            # Créer des données avec corrélation nulle (perpendiculaires)
+            dummy_x = torch.tensor([0.0, 1.0], device=predictions_flat.device)
+            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  # Perpendiculaire à dummy_x
+            self.metrics_test['pearson'].update(dummy_x, dummy_y)  # Donnera une corrélation de 0.0
+
+
 
     def on_test_epoch_end(self):
         # Calculer et logger les métriques de test
@@ -139,7 +153,6 @@ class Base(pl.LightningModule):
             params = [
                 {'params': self.net.parameters()},
             ]
-        # print('params', params)
 
         optimizer = torch.optim.Adam(
                             params,
@@ -268,7 +281,6 @@ class Base(pl.LightningModule):
             
 
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
     from NewArchitectures import NewArchitectures
     with open('params.json') as f:
         conf = json.load(f)
