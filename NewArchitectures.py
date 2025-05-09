@@ -1,9 +1,7 @@
 import numpy as np
 import torch
 from torch.nn import Sequential
-from time import time
 
-import segmentation_models_pytorch as smp
 from NewBase import Base
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
@@ -339,21 +337,6 @@ def count_parameters(model):
 
 
 if __name__ == '__main__':
-    # deb = time()
-    # source=['rgb', 'hs', 'dem','sar']
-    # model=mf_(source)
-    # print(model)
-    # inputa_rgb=torch.randn(1,3,256,256)
-    # inputa_hs=torch.randn(1,182,256,256)
-    # inputa_dem=torch.randn(1,1,256,256)
-    # inputa_sar=torch.randn(1,2,256,256)
-    # inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar]
-    # output=model(inputs)
-    # print(output.shape)
-    # fin = time()
-    # print("Time:", fin-deb)
-    
-
     # train or test
     seed = 42
     random.seed(seed)

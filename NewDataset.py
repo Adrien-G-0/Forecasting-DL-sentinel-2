@@ -10,6 +10,7 @@ with open('path.json', 'r') as f:
     path_sources = json.load(f)
 with open('params.json', 'r') as f:
     conf= json.load(f)
+    
 #Adaptation du nom des sources aux nom des fichier
 # partie temporaire mmais simple pour alterner entre dtm, dem pour le type de terrain
 # panshsdata pour les donnéees hyperspectrales
@@ -27,7 +28,7 @@ for i in range(len(conf["sources"])):
 class Dataset(data.Dataset):
     def __init__(self, root_dir, split='train', pca=False, trans=None):
         """
-        Dataset pour structure avec fichiers nommés par image : XXXX_s2, XXXX_s1, XXXX_dsm, XXXX_worldcover,XXXX_ndvi
+        Dataset pour structure avec fichiers avec une structure: dara/ train or test or val /image_ number / type of data.tif such as SAR...
 
         Args:
             root_dir (str): Dossier racine contenant les splits (train/val/test).
@@ -64,7 +65,7 @@ class Dataset(data.Dataset):
         folder_path = os.path.join(self.root_dir, folder)
         
 
-        # Lire les entrées
+        # loading input data
         inputs = []
         for t in self.input_types:
             path = os.path.join(folder_path, f"{t}.tif")
@@ -74,7 +75,7 @@ class Dataset(data.Dataset):
             img = self.read_tif(path)
             inputs.append(torch.from_numpy(img).float())
 
-        # Lire les cibles
+        # loading target data
         targets = []
         for t in self.target_types:
             path = os.path.join(folder_path, f"{t}.tif")

@@ -1,0 +1,35 @@
+{
+
+    "mean_dict_01":"",
+    "std_dict_01":"",
+    "max_dict_01":"",
+    "max_dict":"",
+    "min_dict":"",
+
+    "experiment_name":"NewArchitectures",
+  
+    "n_epochs": 3,
+    "batch_size": 3,
+    "num_workers": 7,
+    "pca": true,
+  
+    "encoder_name": "",
+    "encoder_weights": "None",
+    "input_channels": 3,
+    "n_classes_lc": 8,
+    "n_classes_sau": 10,
+    "input_size": [256, 352],
+    "train_size": [256, 256],
+    "alpha":0,
+    
+    "learning_rate":1e-4,
+    "weight_decay":0,
+    "gradient_clipping":0.5,
+
+    "method":"",
+    "sources":[ ],
+    "root_dir": ""
+    
+
+    
+  }

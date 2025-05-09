@@ -8,18 +8,15 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import RichProgressBar
-from torchvision import utils  # transforms, models, utils
+# from torchvision import utils  # transforms, models, utils
 
 from NewDataset import Dataset
 from torch.optim.lr_scheduler import StepLR
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import torchmetrics
-import os
-import seaborn as sns
 import argparse,json
 
-with open('path.json', 'r') as f:
-    path = json.load(f)
+
 
 
 class Base(pl.LightningModule):
@@ -156,18 +153,18 @@ class Base(pl.LightningModule):
     
 
     def train_dataloader(self):
-        ds = Dataset(root_dir=path['root_dir'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=True)
         return dl
     
     def val_dataloader(self):
-        ds = Dataset(root_dir=path['root_dir'], split='val', pca=self.conf['pca'], trans=self.val_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'], split='val', pca=self.conf['pca'], trans=self.val_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
     
     
     def test_dataloader(self):
-        ds = Dataset(root_dir=path['root_dir'], split='test', pca=self.conf['pca'], trans=self.train_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'], split='test', pca=self.conf['pca'], trans=self.train_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
 
@@ -221,7 +218,7 @@ class Base(pl.LightningModule):
             callbacks = [
                 RichProgressBar(),
                 ModelCheckpoint(
-                    monitor='total', 
+                    monitor='val_mae', 
                     mode='min', 
                     save_top_k=1, 
                     save_last=True, 
@@ -232,7 +229,7 @@ class Base(pl.LightningModule):
             
             # Early Stopping
             early_stop_callback = EarlyStopping(
-                monitor='total',           # Metric to observe
+                monitor='val_mae',           # Metric to observe
                 min_delta=0.00,            # minimum change to consider an improvement
                 patience=4,                # number of epochs without improvement before stopping
                 verbose=True,              # print messages of early stopping
@@ -244,7 +241,7 @@ class Base(pl.LightningModule):
             trainer = pl.Trainer(
                 accelerator='gpu',
                 devices=1,
-                max_epochs=conf.get('n_epochs', 250),  # Use get() for safer dictionary access
+                max_epochs=conf.get('n_epochs', 100),  # Use get() for safer dictionary access
                 num_sanity_val_steps=2 if args.checkpoint == '' else 0,
                 logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
                 profiler="simple",
@@ -271,11 +268,11 @@ class Base(pl.LightningModule):
             
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     from NewArchitectures import NewArchitectures
     with open('params.json') as f:
         conf = json.load(f)
-    with open('path.json') as f:
-        path = json.load(f)
+
 
 
     model= NewArchitectures(conf)
@@ -285,7 +282,7 @@ if __name__ == '__main__':
     callbacks = [
         RichProgressBar(),
         ModelCheckpoint(
-            monitor='total',
+            monitor='val_mae',
             mode='min',
             save_top_k=1,
             save_last=True,
@@ -293,7 +290,7 @@ if __name__ == '__main__':
         ),
         LearningRateMonitor(logging_interval='epoch'),
         EarlyStopping(
-            monitor='total',
+            monitor='val_mae',
             min_delta=0.00,
             patience=4,
             verbose=True,
@@ -303,23 +300,23 @@ if __name__ == '__main__':
     ]
 
     # 6. Créez le Trainer
-    # trainer = pl.Trainer(
-    #     accelerator='gpu',
-    #     devices=1,
-    #     max_epochs=conf['n_epochs'],
-    #     num_sanity_val_steps=2,
-    #     logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
-    #     callbacks=callbacks
-    # )
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=1,
+        max_epochs=2,
+        num_sanity_val_steps=2,
+        logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
+        callbacks=callbacks
+    )
 
     # Mode debug sans fast_dev_run
-    trainer = pl.Trainer(
-        detect_anomaly=True,     # Détection d'anomalies PyTorch
-        accelerator='gpu',      # Utiliser le GPU
-        log_every_n_steps=1,     # Logger à chaque étape
-        enable_model_summary=True,  # Afficher un résumé du modèle
-        max_epochs=2             # Limiter le nombre d'époques
-    )
+    # trainer = pl.Trainer(
+    #     detect_anomaly=True,     # Détection d'anomalies PyTorch
+    #     accelerator='gpu',      # Utiliser le GPU
+    #     log_every_n_steps=1,     # Logger à chaque étape
+    #     enable_model_summary=True,  # Afficher un résumé du modèle
+    #     max_epochs=conf['n_epochs']             # Limiter le nombre d'époques
+    # )
     # trainer = pl.Trainer(fast_dev_run=True)
 
     # 7. Lancez l'entraînement
