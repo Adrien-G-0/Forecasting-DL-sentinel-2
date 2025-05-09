@@ -183,3 +183,5 @@ json/
 checkpoints/
 old/
 .vscode/
+lightning_logs/
+Nouveaucode/
