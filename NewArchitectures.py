@@ -16,13 +16,10 @@ from pytorch_lightning.utilities import measure_flops
 
 
 
-
 class NewArchitectures(Base):#normalement Base
     def __init__(self, params):
         # init base
         super(NewArchitectures, self).__init__(params)
-        
-
         
         # reorganize sources values
         source_order = ['rgb', 'hs', 'dem', 'sar']
@@ -103,10 +100,8 @@ class NewArchitectures(Base):#normalement Base
 
             model_fwd = lambda: model(x)
             fwd_flops = measure_flops(model, model_fwd)
-            print("flops:" + str(fwd_flops))
-            
+            # print("flops:" + str(fwd_flops))
             output = self.net(inp)
-
             return output
         
         
@@ -121,7 +116,7 @@ class NewArchitectures(Base):#normalement Base
 
             model_fwd = lambda: model(x)
             fwd_flops = measure_flops(model, model_fwd)
-            print("flops:" + str(fwd_flops))
+            # print("flops:" + str(fwd_flops))
 
             output = self.net(inp)
             
@@ -139,7 +134,7 @@ class NewArchitectures(Base):#normalement Base
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
 
             # ipdb.set_trace()
-            transforms = A.Compose(transforms_augmentation, is_check_shapes=False,
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
                                     additional_targets={'hs': 'image',
                                                         'dem': 'image',
                                                         'sar': 'image',

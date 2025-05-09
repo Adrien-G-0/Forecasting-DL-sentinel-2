@@ -182,3 +182,4 @@ Sources/
 json/
 checkpoints/
 old/
+.vscode/

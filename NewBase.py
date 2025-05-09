@@ -14,7 +14,6 @@ from NewDataset import Dataset
 from torch.optim.lr_scheduler import StepLR
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import torchmetrics
-from torchmetrics import MetricCollection,image
 import os
 import seaborn as sns
 import argparse,json
@@ -57,50 +56,50 @@ class Base(pl.LightningModule):
         raise NotImplementedError('Base must be extended by child class that specifies the forward method.')
 
     def training_step(self, batch, batch_nb):
-        
         inputs, targets,_ = batch
         
         # Calculer les prédictions
         
         predictions = self(inputs)
         
-        predictions, targets = predictions.squeeze(), targets.squeeze()
+        # predictions, targets = predictions.squeeze(), targets.squeeze()
         # Calculer la perte L1
         
         loss = F.l1_loss(predictions, targets)
-        
         # Log des métriques
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
         
         return loss
 
     def validation_step(self, batch, batch_idx):
-        
         inputs, targets, _= batch
         # Calculer les prédictions
         predictions = self(inputs)
-        predictions, targets = predictions.squeeze(), targets.squeeze()
-        
+
+        # predictions, targets = predictions.squeeze(), targets.squeeze()
         # Calculer la perte L1
         loss = F.l1_loss(predictions, targets)
-        
         # Log des métriques
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
-        
         # Mettre à jour les métriques
         self.metrics['mae'].update(predictions, targets)
         self.metrics['mse'].update(predictions, targets)
         self.metrics['psnr'].update(predictions, targets)
 
         # Ajustements des dimensions pour certaines métriques
-        predictions_ssim = predictions.unsqueeze(0).unsqueeze(0)  # Ajoute une dimension channel pour SSIM
-        targets_ssim = targets.unsqueeze(0).unsqueeze(0)
+        predictions_ssim = predictions  # Ajoute une dimension channel pour SSIM
+        targets_ssim = targets
 
         predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
-        targets_flat = targets.view(-1)
-
-        self.metrics['ssim'].update(predictions_ssim, targets_ssim)  # Données adaptées
-        self.metrics['pearson'].update(predictions_flat, targets_flat)  # Données adaptées
+        targets_flat = targets.view(-1)         # Aplatit pour Pearson
+        self.metrics['ssim'].update(predictions_ssim, targets_ssim)  
+        if predictions_flat.var() > 1e-3 :
+            self.metrics['pearson'].update(predictions_flat, targets_flat)  # Données applaties
+        else:
+            # Créer des données avec corrélation nulle (perpendiculaires)
+            dummy_x = torch.tensor([0.0, 1.0], device=predictions_flat.device)
+            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  # Perpendiculaire à dummy_x
+            self.metrics['pearson'].update(dummy_x, dummy_y)  # Donnera une corrélation de 0.0
 
 
 
@@ -269,3 +268,61 @@ class Base(pl.LightningModule):
             tester = pl.Trainer()
             tester.test(model)
             
+            
+
+if __name__ == '__main__':
+    from NewArchitectures import NewArchitectures
+    with open('params.json') as f:
+        conf = json.load(f)
+    with open('path.json') as f:
+        path = json.load(f)
+
+
+    model= NewArchitectures(conf)
+
+
+        # 5. Définissez les callbacks
+    callbacks = [
+        RichProgressBar(),
+        ModelCheckpoint(
+            monitor='total',
+            mode='min',
+            save_top_k=1,
+            save_last=True,
+            filename='l1_loss-{epoch:02d}-{total:.4f}'
+        ),
+        LearningRateMonitor(logging_interval='epoch'),
+        EarlyStopping(
+            monitor='total',
+            min_delta=0.00,
+            patience=4,
+            verbose=True,
+            mode='min',
+            strict=True,
+        )
+    ]
+
+    # 6. Créez le Trainer
+    # trainer = pl.Trainer(
+    #     accelerator='gpu',
+    #     devices=1,
+    #     max_epochs=conf['n_epochs'],
+    #     num_sanity_val_steps=2,
+    #     logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
+    #     callbacks=callbacks
+    # )
+
+    # Mode debug sans fast_dev_run
+    trainer = pl.Trainer(
+        detect_anomaly=True,     # Détection d'anomalies PyTorch
+        accelerator='gpu',      # Utiliser le GPU
+        log_every_n_steps=1,     # Logger à chaque étape
+        enable_model_summary=True,  # Afficher un résumé du modèle
+        max_epochs=10             # Limiter le nombre d'époques
+    )
+    # trainer = pl.Trainer(fast_dev_run=True)
+
+    # 7. Lancez l'entraînement
+    trainer.fit(model)
+
+    

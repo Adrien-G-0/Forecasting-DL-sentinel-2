@@ -76,7 +76,7 @@ class Dataset(data.Dataset):
             trans_img= self.trans([*inputs,*targets])
             
             inputs=trans_img[:len(inputs)]
-            targets=trans_img[-len(targets):]
+            targets=trans_img[-len(targets)]
             
         return inputs, targets, folder
     
