@@ -8,6 +8,20 @@ import json
 
 with open('path.json', 'r') as f:
     path_sources = json.load(f)
+with open('params.json', 'r') as f:
+    conf= json.load(f)
+#Adaptation du nom des sources aux nom des fichier
+# partie temporaire mmais simple pour alterner entre dtm, dem pour le type de terrain
+# panshsdata pour les donnéees hyperspectrales
+for i in range(len(conf["sources"])):
+    if conf["sources"][i] == "hs" :
+        conf["sources"][i]="pansh_data"
+    if conf["sources"][i] == "dem" :
+        conf["sources"][i]="DTM"
+    if conf["sources"][i] == "sar" :
+        conf["sources"][i]="SAR"
+    if conf["sources"][i] == "rgb" :
+        conf["sources"][i]="RGB"
 
 
 class Dataset(data.Dataset):
@@ -30,8 +44,7 @@ class Dataset(data.Dataset):
         self.trans = trans
 
         # Définit les types de données attendus (ordre : inputs puis targets)
-        
-        self.input_types = ['RGB', 'pansh_data', 'DTM', 'SAR']
+        self.input_types = conf['sources']
         self.target_types = ['ndvi'] 
 
     def __len__(self):

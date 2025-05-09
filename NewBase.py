@@ -318,7 +318,7 @@ if __name__ == '__main__':
         accelerator='gpu',      # Utiliser le GPU
         log_every_n_steps=1,     # Logger à chaque étape
         enable_model_summary=True,  # Afficher un résumé du modèle
-        max_epochs=10             # Limiter le nombre d'époques
+        max_epochs=2             # Limiter le nombre d'époques
     )
     # trainer = pl.Trainer(fast_dev_run=True)
 
