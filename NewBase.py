@@ -104,13 +104,13 @@ class Base(pl.LightningModule):
         self.metrics.reset()
 
     def test_step(self, batch, batch_idx):
-        inputs, targets = batch
+        inputs, targets,_ = batch
 
 
         predictions = self(inputs)
 
         # Mettre à jour les métriques de test
-        self.metrics_test.update(predictions, targets)
+        # self.metrics_test.update(predictions, targets)
         # Mettre à jour les métriques
         self.metrics_test['mae'].update(predictions, targets)
         self.metrics_test['mse'].update(predictions, targets)
@@ -177,7 +177,7 @@ class Base(pl.LightningModule):
     
     
     def test_dataloader(self):
-        ds = Dataset(root_dir=self.conf['root_dir'], split='test', pca=self.conf['pca'], trans=self.train_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'], split='test', pca=self.conf['pca'], trans=self.test_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
 
@@ -242,7 +242,7 @@ class Base(pl.LightningModule):
             
             # Early Stopping
             early_stop_callback = EarlyStopping(
-                monitor='val_mae',           # Metric to observe
+                monitor='val_mae',         # Metric to observe
                 min_delta=0.00,            # minimum change to consider an improvement
                 patience=4,                # number of epochs without improvement before stopping
                 verbose=True,              # print messages of early stopping
