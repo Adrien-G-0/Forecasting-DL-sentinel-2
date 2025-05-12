@@ -185,3 +185,7 @@ checkpoints/
 old/
 .vscode/
 lightning_logs/
+
+
+# Python
+lancements consécutifs.py
