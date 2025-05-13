@@ -137,12 +137,7 @@ class NewArchitectures(Base):
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
 
-            # ipdb.set_trace()
-            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
-                                    additional_targets={'hs': 'image',
-                                                        'dem': 'image',
-                                                        'sar': 'image',
-                                                        'ndvi': 'image'})
+            
             
             #No need to permute the images because transformlations is doing everything
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
@@ -163,6 +158,13 @@ class NewArchitectures(Base):
             dem = normalize_dem(image=dem)['image']
             sar = normalize_sar(image=sar)['image']
 
+
+            # set
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
+                                    additional_targets={'hs': 'image',
+                                                        'dem': 'image',
+                                                        'sar': 'image',
+                                                        'ndvi': 'image'})
 
             sample = transforms(image=rgb,
                                 hs=hs,
@@ -318,10 +320,10 @@ class Unet(torch.nn.Module):
         x = self.decoder1(x,residual4)
         x = self.decoder2(x,residual3)
         x = self.decoder3(x,residual2)
-        x = self.decoder4(x,residual1)
+        output = self.decoder4(x,residual1)
 
-        # x = self.final_conv(x) #ajout par rapport au modèle car les dimension ne correspondent pas
-        output=self.activation(x)  # sigmoïd that return a number between 0 and 1
+
+        # output=self.activation(output)  # Test to remoove the activation function because the output is alsmost close to 0 and 1
         return 2*output-1 # to return NDVI value between -1 and 1
     
 
@@ -341,4 +343,4 @@ if __name__ == '__main__':
 
     Base.main(NewArchitectures)
 
-    
+

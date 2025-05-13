@@ -281,57 +281,53 @@ class Base(pl.LightningModule):
             
 
 if __name__ == '__main__':
+
     from NewArchitectures import NewArchitectures
-    with open('params.json') as f:
-        conf = json.load(f)
+    if True:
+        with open('params.json') as f:
+            conf = json.load(f)
+        model= NewArchitectures(conf)
+            # 5. Définissez les callbacks
+        callbacks = [
+            RichProgressBar(),
+            ModelCheckpoint(
+                monitor='val_loss',
+                mode='min',
+                save_top_k=1,
+                save_last=True,
+                filename='l1_loss-{epoch:02d}-{total:.4f}'
+            ),
+            LearningRateMonitor(logging_interval='epoch'),
+            EarlyStopping(
+                monitor='val_mae',
+                min_delta=0.00,
+                patience=5,
+                verbose=True,
+                mode='min',
+                strict=True,
+            )
+        ]
 
-
-
-    model= NewArchitectures(conf)
-
-
-        # 5. Définissez les callbacks
-    callbacks = [
-        RichProgressBar(),
-        ModelCheckpoint(
-            monitor='val_mae',
-            mode='min',
-            save_top_k=1,
-            save_last=True,
-            filename='l1_loss-{epoch:02d}-{total:.4f}'
-        ),
-        LearningRateMonitor(logging_interval='epoch'),
-        EarlyStopping(
-            monitor='val_mae',
-            min_delta=0.00,
-            patience=4,
-            verbose=True,
-            mode='min',
-            strict=True,
+        # 6. Créez le Trainer
+        trainer = pl.Trainer(
+            accelerator='gpu',
+            devices=1,
+            max_epochs=conf['n_epochs'],
+            num_sanity_val_steps=2,
+            logger=TensorBoardLogger('checkpoints', name=conf['experiment_name'] + "_" + "_".join(conf['sources']+ ["_"] + [conf['method']])),
+            callbacks=callbacks
         )
-    ]
+        trainer = pl.Trainer(fast_dev_run=True)
+        # 7. Lancez l'entraînement
+        trainer.fit(model)
+        # conf = model.conf
+        tester = pl.Trainer()
+        tester.test(model)
+    if False:
+        # load from checkpoint
+        ckp="checkpoints/dem_sar/version_0/checkpoints/l1_loss-epoch=15-total=0.0000.ckpt"
+        model = NewArchitectures.load_from_checkpoint(ckp)
+        conf = model.conf
+        tester = pl.Trainer()
+        tester.test(model)
 
-    # 6. Créez le Trainer
-    trainer = pl.Trainer(
-        accelerator='gpu',
-        devices=1,
-        max_epochs=2,
-        num_sanity_val_steps=2,
-        logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']),
-        callbacks=callbacks
-    )
-
-    # Mode debug sans fast_dev_run
-    # trainer = pl.Trainer(
-    #     detect_anomaly=True,     # Détection d'anomalies PyTorch
-    #     accelerator='gpu',      # Utiliser le GPU
-    #     log_every_n_steps=1,     # Logger à chaque étape
-    #     enable_model_summary=True,  # Afficher un résumé du modèle
-    #     max_epochs=conf['n_epochs']             # Limiter le nombre d'époques
-    # )
-    # trainer = pl.Trainer(fast_dev_run=True)
-
-    # 7. Lancez l'entraînement
-    trainer.fit(model)
-
-    
