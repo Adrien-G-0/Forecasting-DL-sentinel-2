@@ -166,18 +166,18 @@ class Base(pl.LightningModule):
     
 
     def train_dataloader(self):
-        ds = Dataset(root_dir=self.conf['root_dir'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'],sources=self.conf['sources'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=True)
         return dl
     
     def val_dataloader(self):
-        ds = Dataset(root_dir=self.conf['root_dir'], split='val', pca=self.conf['pca'], trans=self.val_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'],sources=self.conf['sources'], split='val', pca=self.conf['pca'], trans=self.val_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
     
     
     def test_dataloader(self):
-        ds = Dataset(root_dir=self.conf['root_dir'], split='test', pca=self.conf['pca'], trans=self.test_transforms())
+        ds = Dataset(root_dir=self.conf['root_dir'],sources=self.conf['sources'], split='test', pca=self.conf['pca'], trans=self.test_transforms())
         dl = data.DataLoader(ds, batch_size=self.conf['batch_size'], num_workers=self.conf['num_workers'], shuffle=False)
         return dl
 
@@ -301,7 +301,7 @@ if __name__ == '__main__':
             EarlyStopping(
                 monitor='val_mae',
                 min_delta=0.00,
-                patience=5,
+                patience=10,
                 verbose=True,
                 mode='min',
                 strict=True,
@@ -314,10 +314,9 @@ if __name__ == '__main__':
             devices=1,
             max_epochs=conf['n_epochs'],
             num_sanity_val_steps=2,
-            logger=TensorBoardLogger('checkpoints', name=conf['experiment_name'] + "_" + "_".join(conf['sources']+ ["_"] + [conf['method']])),
+            logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']  + "_".join(conf['sources']+ ["_"] + [conf['method']])),
             callbacks=callbacks
         )
-        trainer = pl.Trainer(fast_dev_run=True)
         # 7. Lancez l'entraînement
         trainer.fit(model)
         # conf = model.conf
