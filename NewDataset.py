@@ -6,27 +6,20 @@ import torch.utils.data as data
 import rasterio as rs
 import json
 
-with open('path.json', 'r') as f:
-    path_sources = json.load(f)
-with open('params.json', 'r') as f:
-    conf= json.load(f)
+# with open('params.json', 'r') as f:
+#     conf= json.load(f)
     
 #Adaptation du nom des sources aux nom des fichier
-# partie temporaire mmais simple pour alterner entre dtm, dem pour le type de terrain
-# panshsdata pour les donnéees hyperspectrales
-for i in range(len(conf["sources"])):
-    if conf["sources"][i] == "hs" :
-        conf["sources"][i]="pansh_data"
-    if conf["sources"][i] == "dem" :
-        conf["sources"][i]="DTM"
-    if conf["sources"][i] == "sar" :
-        conf["sources"][i]="SAR"
-    if conf["sources"][i] == "rgb" :
-        conf["sources"][i]="RGB"
+
+# for i in range(len(conf["sources"])):
+#     if conf["sources"][i] == "dem" :
+#         conf["sources"][i]="dtm"
+
+
 
 
 class Dataset(data.Dataset):
-    def __init__(self, root_dir, split='train', pca=False, trans=None):
+    def __init__(self, root_dir,sources, split='train', pca=False, trans=None):
         """
         Dataset pour structure avec fichiers avec une structure: dara/ train or test or val /image_ number / type of data.tif such as SAR...
 
