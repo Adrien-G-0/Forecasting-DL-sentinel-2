@@ -38,9 +38,14 @@ class Dataset(data.Dataset):
         self.trans = trans
 
         # Définit les types de données attendus (ordre : inputs puis targets)
-        self.input_types = conf['sources']
+        self.input_types = list(sources).copy()
         self.target_types = ['ndvi'] 
-
+        #Adaptation du nom des sources aux nom des fichier
+        #TODO a améliore, soit change le nom des fichiers soit adapter le reste du code pour tout changer dem en dtm
+        for i in range(len(self.input_types)):
+            if self.input_types[i] == "dem" :
+                self.input_types[i]="dtm"
+        print('')
     def __len__(self):
         return len(self.image_dirs)
 

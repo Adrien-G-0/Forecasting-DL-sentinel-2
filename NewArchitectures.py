@@ -323,7 +323,7 @@ class Unet(torch.nn.Module):
         output = self.decoder4(x,residual1)
 
 
-        # output=self.activation(output)  # Test to remoove the activation function because the output is alsmost close to 0 and 1
+        output=self.activation(output)  # Test to remoove the activation function because the output is alsmost close to 0 and 1
         return 2*output-1 # to return NDVI value between -1 and 1
     
 
@@ -333,14 +333,22 @@ def count_parameters(model):
 
 
 if __name__ == '__main__':
-    # train or test
-    seed = 42
-    random.seed(seed)
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    seed_everything(seed, workers=True)
-    torch.backends.cudnn.deterministic = True
+    # # train or test
+    # seed = 42
+    # random.seed(seed)
+    # torch.manual_seed(seed)
+    # np.random.seed(seed)
+    # seed_everything(seed, workers=True)
+    # torch.backends.cudnn.deterministic = True
 
-    Base.main(NewArchitectures)
+    # Base.main(NewArchitectures)
 
 
+    model = NewArchitectures.load_from_checkpoint("checkpoints/early_fusion_sar/version_0/checkpoints/last.ckpt")
+    dl = model.test_dataloader()
+    dataiter = iter(dl)
+    try:
+        first_batch = next(dataiter)
+        print("Premier batch chargé avec succès")
+    except Exception as e:
+        print(f"Erreur lors du chargement du premier batch: {e}")
