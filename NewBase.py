@@ -110,13 +110,12 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
 
         # Mettre à jour les métriques de test
-        # self.metrics_test.update(predictions, targets)
-        # Mettre à jour les métriques
+        
         self.metrics_test['mae'].update(predictions, targets)
         self.metrics_test['mse'].update(predictions, targets)
         self.metrics_test['psnr'].update(predictions, targets)
-        self.metrics_test['ssim'].update(predictions, targets) 
-
+        self.metrics_test['ssim'].update(predictions, targets)
+        
         # Ajustements des dimensions pour certaines métriques
         predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
         targets_flat = targets.view(-1)         # Aplatit pour Pearson
@@ -291,7 +290,7 @@ if __name__ == '__main__':
         callbacks = [
             RichProgressBar(),
             ModelCheckpoint(
-                monitor='val_loss',
+                monitor='val_mae',
                 mode='min',
                 save_top_k=1,
                 save_last=True,
@@ -320,8 +319,8 @@ if __name__ == '__main__':
         # 7. Lancez l'entraînement
         trainer.fit(model)
         # conf = model.conf
-        tester = pl.Trainer()
-        tester.test(model)
+
+        trainer.test(model)
     if False:
         # load from checkpoint
         ckp="checkpoints/dem_sar/version_0/checkpoints/l1_loss-epoch=15-total=0.0000.ckpt"

@@ -4,6 +4,9 @@ This repository allows you to train a model with different architectures and mod
 
 ## Architecture
 
+### TimeArchitecures
+This improvement of the architecure of the model by adding the time as a modality, the time is implemented in the bottleneck to mak a linear transformation of the latent space before the decoder.
+
 ### NewArchitectures
 This class creates the model architecture with different data sources and aggregation types (early_fusion or middle_fusion).
 All modalities are resized to be processed with a size of [channels, 256, 256].
@@ -55,21 +58,21 @@ Sources/
 │   └── image_1/
 │       └── sar.tif
 │       └── rgb.tif
-│       └── dem.tif
+│       └── dtm.tif
 │       └── hs.tif
 │       └── ndvi.tif
 ├── val/
 │   └── image_2/
 │       └── sar.tif
 │       └── rgb.tif
-│       └── dem.tif
+│       └── dtm.tif
 │       └── hs.tif
 │       └── ndvi.tif
 └── test/
     └── image_3/
         └── sar.tif
         └── rgb.tif
-        └── dem.tif
+        └── dtm.tif
         └── hs.tif
         └── ndvi.tif
 ```
