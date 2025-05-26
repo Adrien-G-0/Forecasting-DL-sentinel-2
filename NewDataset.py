@@ -71,6 +71,10 @@ class Dataset(data.Dataset):
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"Fichier d'entrée manquant : {path}")
             img = self.read_tif(path)
+            if True and t=='lc':
+                # Convertir l'image en one-hot
+                img = self.onehot(img)
+                img = img.astype(np.float32)
             inputs.append(torch.from_numpy(img).float())
 
         # loading target data
@@ -93,4 +97,52 @@ class Dataset(data.Dataset):
         return inputs, targets, folder
     
 
+    def onehot(self, landcover_tif):
+        """
+        Convertit une image de classification en une représentation one-hot.
+        Préserve le type d'entrée (numpy.ndarray ou torch.Tensor).
+        
+        Args:
+            landcover_tif (numpy.ndarray ou torch.Tensor): Image de classification.
+        
+        Returns:
+            Même type que l'entrée: Image one-hot encodée.
+        """
+
     
+        # Nombre de classes
+        num_classes = 8  # 8 classes in the dataset
+        
+        if isinstance(landcover_tif, np.ndarray):
+            # Cas NumPy
+            one_hot = np.eye(num_classes)[landcover_tif]
+            one_hot = one_hot.squeeze()
+            return one_hot
+        
+        elif isinstance(landcover_tif, torch.Tensor):
+        # Cas PyTorch
+            
+        
+            # Supprimer la dernière dimension si elle est de taille 1
+            if landcover_tif.shape[-1] == 1:
+                landcover_squeezed = landcover_tif.squeeze(-1)
+            else:
+                landcover_squeezed = landcover_tif
+            
+            # Créer la matrice identité sur le bon device
+            eye = torch.eye(num_classes, dtype=torch.float32)
+            
+            # One-hot encoding
+            one_hot = eye[landcover_squeezed.long()]
+            
+            return one_hot
+        
+
+
+
+if __name__ == '__main__':
+    ds= Dataset(root_dir='Sorted_Sources', sources=['rgb', 'hs', 'dem','sar','lc'], split='train',pca=False, trans=None)
+    data= ds[0]
+    print(data[0][4].shape)  # Affiche la forme de la première entrée
+    lc= Dataset.onehot(ds,data[0][4])
+    print(lc.shape)  # Affiche la forme de la première entrée

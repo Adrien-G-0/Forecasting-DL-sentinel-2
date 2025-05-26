@@ -186,7 +186,7 @@ checkpoints/
 old/
 .vscode/
 lightning_logs/
-
+WeightWatcher/
 
 # Python
-lancements consécutifs.py
+lancements_consécutifs.py
