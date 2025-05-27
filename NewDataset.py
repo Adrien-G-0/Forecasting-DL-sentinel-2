@@ -6,14 +6,9 @@ import torch.utils.data as data
 import rasterio as rs
 import json
 
-# with open('params.json', 'r') as f:
-#     conf= json.load(f)
+with open('params.json', 'r') as f:
+     conf= json.load(f)
     
-#Adaptation du nom des sources aux nom des fichier
-
-# for i in range(len(conf["sources"])):
-#     if conf["sources"][i] == "dem" :
-#         conf["sources"][i]="dtm"
 
 
 
@@ -71,9 +66,13 @@ class Dataset(data.Dataset):
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"Fichier d'entrée manquant : {path}")
             img = self.read_tif(path)
-            if True and t=='lc':
+            if t=='lc':
                 # Convertir l'image en one-hot
-                img = self.onehot(img)
+                img = self.onehot(img,conf['num_classes_lc'])
+                img = img.astype(np.float32)
+            if t=='sar':
+                # Convertir l'image en one-hot
+                img = self.onehot(img,conf['num_classes_sau'])
                 img = img.astype(np.float32)
             inputs.append(torch.from_numpy(img).float())
 
@@ -97,43 +96,36 @@ class Dataset(data.Dataset):
         return inputs, targets, folder
     
 
-    def onehot(self, landcover_tif):
+    def onehot(self, cover_tif,num_class):
         """
         Convertit une image de classification en une représentation one-hot.
         Préserve le type d'entrée (numpy.ndarray ou torch.Tensor).
         
         Args:
-            landcover_tif (numpy.ndarray ou torch.Tensor): Image de classification.
+           cover_tif (numpy.ndarray ou torch.Tensor): Image de classification.
         
         Returns:
             Même type que l'entrée: Image one-hot encodée.
-        """
-
-    
-        # Nombre de classes
-        num_classes = 8  # 8 classes in the dataset
-        
-        if isinstance(landcover_tif, np.ndarray):
+        """  
+        if isinstance(cover_tif, np.ndarray):
             # Cas NumPy
-            one_hot = np.eye(num_classes)[landcover_tif]
+            one_hot = np.eye(num_class)[cover_tif]
             one_hot = one_hot.squeeze()
             return one_hot
         
-        elif isinstance(landcover_tif, torch.Tensor):
+        elif isinstance(cover_tif, torch.Tensor):
         # Cas PyTorch
-            
-        
             # Supprimer la dernière dimension si elle est de taille 1
-            if landcover_tif.shape[-1] == 1:
-                landcover_squeezed = landcover_tif.squeeze(-1)
+            if cover_tif.shape[-1] == 1:
+                cover_squeezed = cover_tif.squeeze(-1)
             else:
-                landcover_squeezed = landcover_tif
+                cover_squeezed = cover_tif
             
             # Créer la matrice identité sur le bon device
-            eye = torch.eye(num_classes, dtype=torch.float32)
+            eye = torch.eye(num_class, dtype=torch.float32)
             
             # One-hot encoding
-            one_hot = eye[landcover_squeezed.long()]
+            one_hot = eye[cover_squeezed.long()]
             
             return one_hot
         

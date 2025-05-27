@@ -20,7 +20,7 @@ class NewArchitectures(Base):
         super(NewArchitectures, self).__init__(params)
         
         # reorganize sources values
-        source_order = ['rgb', 'hs', 'dem', 'sar','lc']
+        source_order = ['rgb', 'hs', 'dem', 'sar','lc','sau']
         ordered_sources = []
         for source in source_order:
             if source in self.conf['sources']:
@@ -41,7 +41,9 @@ class NewArchitectures(Base):
                 if source == 'sar' :
                     input_channels = input_channels +2
                 if source == 'lc':
-                    input_channels = input_channels +8 
+                    input_channels = input_channels +self.conf['num_classes_lc']  # should be 8
+                if source == 'sau':
+                    input_channels = input_channels +self.conf['num_classes_sau']  # should be 10
         
             # define architecture
             self.net=Unet(input_channels)
@@ -127,18 +129,18 @@ class NewArchitectures(Base):
         # create function
         def transform_inputs(inps):
             # create transformation
-            sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc', 'ndvi']
+            sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc','sau', 'ndvi']
             inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
             inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dem, sar,lc , ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'], inps_dict['ndvi']
+            rgb, hs, dem, sar,lc , ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
 
 
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
-            # no normalization for lc because it is onehot encoded
+            # no normalization for lc and sau because it is onehot encoded
 
             
             
@@ -150,6 +152,7 @@ class NewArchitectures(Base):
             #no need to normalize the ndvi because it is already between -1 and 1
             ndvi = ndvi.numpy()
             lc=lc.numpy()
+            sau=sau.numpy()
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
@@ -157,6 +160,7 @@ class NewArchitectures(Base):
             sar = sar.astype(np.float32)
             ndvi = ndvi.astype(np.float32)
             lc = lc.astype(np.float32)
+            sau = sau.astype(np.float32)
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
@@ -170,6 +174,7 @@ class NewArchitectures(Base):
                                                         'dem': 'image',
                                                         'sar': 'image',
                                                         'lc': 'image',
+                                                        'sau': 'image',
                                                         'ndvi': 'image'})
 
             sample = transforms(image=rgb,
@@ -177,6 +182,7 @@ class NewArchitectures(Base):
                                 dem=dem,
                                 sar=sar,
                                 lc=lc,
+                                sau=sau,
                                 ndvi=ndvi
                                 
                                 )
@@ -186,9 +192,10 @@ class NewArchitectures(Base):
             dem = sample['dem']
             sar = sample['sar']
             lc= sample['lc']
+            sau = sample['sau']
             ndvi = sample['ndvi']
 
-            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar ,'lc': lc, 'ndvi': ndvi}
+            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
             # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
