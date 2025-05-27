@@ -68,11 +68,11 @@ class Dataset(data.Dataset):
             img = self.read_tif(path)
             if t=='lc':
                 # Convertir l'image en one-hot
-                img = self.onehot(img,conf['num_classes_lc'])
+                img = self.onehot(img,conf['num_class_lc'])
                 img = img.astype(np.float32)
-            if t=='sar':
+            if t=='sau':
                 # Convertir l'image en one-hot
-                img = self.onehot(img,conf['num_classes_sau'])
+                img = self.onehot(img,conf['num_class_sau'])
                 img = img.astype(np.float32)
             inputs.append(torch.from_numpy(img).float())
 
@@ -109,6 +109,7 @@ class Dataset(data.Dataset):
         """  
         if isinstance(cover_tif, np.ndarray):
             # Cas NumPy
+            cover_tif= np.array(cover_tif, dtype=np.uint8)
             one_hot = np.eye(num_class)[cover_tif]
             one_hot = one_hot.squeeze()
             return one_hot

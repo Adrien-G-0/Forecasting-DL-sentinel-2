@@ -8,8 +8,8 @@ from albumentations.pytorch.transforms import ToTensorV2
 import pickle
 from middle_fusion_ import Middle_fusion_en as mf_
 # seed
-import random
-from pytorch_lightning import seed_everything
+# import random
+# from pytorch_lightning import seed_everything
 from pytorch_lightning.utilities import measure_flops
 
 
@@ -55,10 +55,7 @@ class NewArchitectures(Base):
             # TODO
             sources = self.conf['sources']
             self.fusion_en = mf_(sources)
-            in_channels_middle_fusion = len(sources) * 64
-            
-            
-            
+            in_channels_middle_fusion = len(sources) * 64           
             
             # define architecture
             self.net = Unet(in_channels_middle_fusion)
@@ -134,7 +131,7 @@ class NewArchitectures(Base):
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
             inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dem, sar,lc , ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+            rgb, hs, dem, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
 
 
             normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
