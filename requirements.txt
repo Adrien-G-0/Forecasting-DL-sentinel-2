@@ -15,3 +15,5 @@ gdal==3.8.4
 rich 
 tensorBoard
 tensorBoardX
+transformers
+weightwatcher

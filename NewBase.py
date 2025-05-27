@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks import RichProgressBar
 # from torchvision import utils  # transforms, models, utils
 
 from NewDataset import Dataset
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import torchmetrics
 import argparse,json
@@ -157,11 +157,20 @@ class Base(pl.LightningModule):
                             params,
                             weight_decay = self.conf['weight_decay'],
                             lr = self.conf['learning_rate'])
-
-        LR_scheduler = {"scheduler": StepLR(optimizer, step_size=7, gamma=0.5), "monitor": "losses/val_total",
-                        'name': 'Learning_rate'}
         
-        return ([optimizer], [LR_scheduler])
+        LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.6),                        
+                        "monitor": "losses/val_total",
+                        "name": "Learning_rate"}
+        
+        Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
+                             "monitior":"losses/val_total",
+                             "name":"ReduceLROnPlateau"}
+
+        return {
+                "optimizer": optimizer,
+                "lr_scheduler": LR_scheduler,
+                "plateau_scheduler": Plateau_scheduler
+                }
     
 
     def train_dataloader(self):
@@ -317,6 +326,7 @@ if __name__ == '__main__':
             callbacks=callbacks
         )
         # 7. Lancez l'entraînement
+        trainer=pl.Trainer(fast_dev_run=True)
         trainer.fit(model)
         # conf = model.conf
 
