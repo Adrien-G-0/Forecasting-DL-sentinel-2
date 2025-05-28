@@ -158,20 +158,38 @@ class Base(pl.LightningModule):
                             weight_decay = self.conf['weight_decay'],
                             lr = self.conf['learning_rate'])
         
-        LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.6),                        
-                        "monitor": "losses/val_total",
+        LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
+                        "interval": "epoch",                       
+                        "monitor": "val_loss",
                         "name": "Learning_rate"}
         
         Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
-                             "monitior":"losses/val_total",
-                             "name":"ReduceLROnPlateau"}
+                            "monitor":"val_loss",
+                            "interval":"epoch",
+                            "name":"ReduceLROnPlateau"}
 
         return {
                 "optimizer": optimizer,
-                "lr_scheduler": LR_scheduler,
-                "plateau_scheduler": Plateau_scheduler
+                "lr_schedulers": [LR_scheduler, Plateau_scheduler]  # Use only one scheduler here
                 }
-    
+        # # Manually handle multiple schedulers
+        return {
+            "optimizer": optimizer,
+            "lr_schedulers": [
+            {
+                "scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
+                "interval": "epoch",
+                "monitor": "val_loss",
+                "name": "StepLR"
+            },
+            {
+                "scheduler": ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
+                "interval": "epoch",
+                "monitor": "val_loss",
+                "name": "ReduceLROnPlateau"
+            }
+            ]
+        }
 
     def train_dataloader(self):
         ds = Dataset(root_dir=self.conf['root_dir'],sources=self.conf['sources'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
@@ -322,11 +340,10 @@ if __name__ == '__main__':
             devices=1,
             max_epochs=conf['n_epochs'],
             num_sanity_val_steps=2,
-            logger=TensorBoardLogger('checkpoints', name=conf['experiment_name']  + "_".join(conf['sources']+ ["_"] + [conf['method']])),
+            logger=TensorBoardLogger('checkpoints', name="test/"+conf['experiment_name']  + "_".join(conf['sources']+ ["_"] + [conf['method']])),
             callbacks=callbacks
         )
         # 7. Lancez l'entraînement
-        trainer=pl.Trainer(fast_dev_run=True)
         trainer.fit(model)
         # conf = model.conf
 
