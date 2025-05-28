@@ -56,24 +56,30 @@ class Middle_fusion_en(nn.Module):
         if len(self.conf_sau['channels']) != len(self.conf_sau['kernels']) + 1: 
             raise Exception("SAU configurations are wrong, channels length must be equal to kernels length + 1")
         
+        # # Create convolutional blocks for each source
+        # for source in self.sources:
+        #     if source == 'rgb':
+        #         self.conv[source] = ConvBlock_mf(self.conf_rgb)
+        #     elif source == 'hs':
+        #         self.conv[source] = ConvBlock_mf(self.conf_hs)
+        #     elif source == 'sar':
+        #         self.conv[source] = ConvBlock_mf(self.conf_sar)
+        #     elif source == 'dem':
+        #         self.conv[source] = ConvBlock_mf(self.conf_dem)
+        #     elif source == 'lc':
+        #         self.conv[source] = ConvBlock_mf(self.conf_lc)
+        #     elif source == 'sau':
+        #         self.conv[source] = ConvBlock_mf(self.conf_sau)
+        
+        # # Register the modules properly
+        # for source in self.sources:
+        #     setattr(self, f'conv_{source}', self.conv[source])
+        
         # Create convolutional blocks for each source
         for source in self.sources:
-            if source == 'rgb':
-                self.conv[source] = ConvBlock_mf(self.conf_rgb)
-            elif source == 'hs':
-                self.conv[source] = ConvBlock_mf(self.conf_hs)
-            elif source == 'sar':
-                self.conv[source] = ConvBlock_mf(self.conf_sar)
-            elif source == 'dem':
-                self.conv[source] = ConvBlock_mf(self.conf_dem)
-            elif source == 'lc':
-                self.conv[source] = ConvBlock_mf(self.conf_lc)
-            elif source == 'sau':
-                self.conv[source] = ConvBlock_mf(self.conf_sau)
-        
-        # Register the modules properly
-        for source in self.sources:
-            setattr(self, f'conv_{source}', self.conv[source])
+            config = getattr(self, f'conf_{source}', None)
+            if config is not None:
+                setattr(self, f'conv_{source}', ConvBlock_mf(config))
     
 
 
@@ -85,6 +91,7 @@ class Middle_fusion_en(nn.Module):
             raise Exception(f"Expected {len(self.sources)} inputs, got {len(inputs)}")
         
         features = []
+        # Apply the corresponding convolutional block to each input 
         for i, source in enumerate(self.sources):
             feature = self.conv[source](inputs[i])
             features.append(feature)

@@ -23,17 +23,17 @@ class Base(pl.LightningModule):
 
     def __init__(self, params):
         super(Base, self).__init__()
-        # Sauvegarder les hyperparamètres
+        # Save hyper parameters
         self.save_hyperparameters()
         self.conf = params
 
-        # Définir les transformations d'entrée
+        # Define the transformations
         self.input_transforms = None
 
-        # Définir le réseau
+        # Define the network architecture
         self.net = None
 
-        # Définir les métriques pour l'objet
+        # Define the metrics
         self.metrics = torchmetrics.MetricCollection({
             'mae': torchmetrics.MeanAbsoluteError(),
             'mse': torchmetrics.MeanSquaredError(),
@@ -58,49 +58,46 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
         
         loss = F.l1_loss(predictions, targets)
-        # Log des métriques
+        
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
         
         return loss
 
     def validation_step(self, batch, batch_idx):
         inputs, targets, _= batch
-        # Calculer les prédictions
+        
         predictions = self(inputs)
 
-
-        # Calculer la perte L1
         loss = F.l1_loss(predictions, targets)
-        # Log des métriques
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
-        # Mettre à jour les métriques
+
+        # Update each metrics
         self.metrics['mae'].update(predictions, targets)
         self.metrics['mse'].update(predictions, targets)
         self.metrics['psnr'].update(predictions, targets)
         self.metrics['ssim'].update(predictions, targets) 
 
-        # Ajustements des dimensions pour certaines métriques
-        predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
-        targets_flat = targets.view(-1)         # Aplatit pour Pearson
+        # Pearson correlation need to be flattened before computation
+        predictions_flat = predictions.view(-1)  
+        targets_flat = targets.view(-1)        
          
-        #to avoid error when the variance is too low
+        # avoid warning when variance is too low
         if predictions_flat.var() > 1e-3 :
-            self.metrics['pearson'].update(predictions_flat, targets_flat)  # Données applaties
+            self.metrics['pearson'].update(predictions_flat, targets_flat) 
         else:
-            # Créer des données avec corrélation nulle (perpendiculaires)
+            # Creating orthogonal data when the variance is too low
             dummy_x = torch.tensor([0.0, 1.0], device=predictions_flat.device)
-            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  # Perpendiculaire à dummy_x
-            self.metrics['pearson'].update(dummy_x, dummy_y)  # Donnera une corrélation de 0.0
+            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  
+            self.metrics['pearson'].update(dummy_x, dummy_y)  
 
 
 
     def on_validation_epoch_end(self):
-        # Calculer et logger les métriques
+        
         metrics = self.metrics.compute()
         for key, value in metrics.items():
             self.log(f"val_{key}", value, prog_bar=True)
         
-        # Réinitialiser les métriques
         self.metrics.reset()
 
     def test_step(self, batch, batch_idx):
@@ -109,35 +106,32 @@ class Base(pl.LightningModule):
 
         predictions = self(inputs)
 
-        # Mettre à jour les métriques de test
+        # Update metrics as in validation step
         
         self.metrics_test['mae'].update(predictions, targets)
         self.metrics_test['mse'].update(predictions, targets)
         self.metrics_test['psnr'].update(predictions, targets)
         self.metrics_test['ssim'].update(predictions, targets)
         
-        # Ajustements des dimensions pour certaines métriques
-        predictions_flat = predictions.view(-1)  # Aplatit pour Pearson
-        targets_flat = targets.view(-1)         # Aplatit pour Pearson
+        predictions_flat = predictions.view(-1)  
+        targets_flat = targets.view(-1)        
          
-        #to avoid error when the variance is too low
+        
         if predictions_flat.var() > 1e-3 :
-            self.metrics_test['pearson'].update(predictions_flat, targets_flat)  # Données applaties
+            self.metrics_test['pearson'].update(predictions_flat, targets_flat)  
         else:
-            # Créer des données avec corrélation nulle (perpendiculaires)
             dummy_x = torch.tensor([0.0, 1.0], device=predictions_flat.device)
-            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  # Perpendiculaire à dummy_x
-            self.metrics_test['pearson'].update(dummy_x, dummy_y)  # Donnera une corrélation de 0.0
+            dummy_y = torch.tensor([1.0, 1.0], device=predictions_flat.device)  
+            self.metrics_test['pearson'].update(dummy_x, dummy_y) 
 
 
 
     def on_test_epoch_end(self):
-        # Calculer et logger les métriques de test
+        # Same as on validation_epoch_end
         metrics = self.metrics_test.compute()
         for key, value in metrics.items():
             self.log(key, value)
         
-        # Réinitialiser les métriques
         self.metrics_test.reset()
 
     def configure_optimizers(self):
@@ -170,9 +164,9 @@ class Base(pl.LightningModule):
 
         return {
                 "optimizer": optimizer,
-                "lr_schedulers": [LR_scheduler, Plateau_scheduler]  # Use only one scheduler here
+                "lr_schedulers": [LR_scheduler, Plateau_scheduler] 
                 }
-        # # Manually handle multiple schedulers
+        ## Manually handle multiple schedulers
         return {
             "optimizer": optimizer,
             "lr_schedulers": [
@@ -268,12 +262,12 @@ class Base(pl.LightningModule):
             
             # Early Stopping
             early_stop_callback = EarlyStopping(
-                monitor='val_mae',         # Metric to observe
-                min_delta=0.00,            # minimum change to consider an improvement
-                patience=4,                # number of epochs without improvement before stopping
-                verbose=True,              # print messages of early stopping
-                mode='min',                # minimizing the metric
-                strict=True,               # if True, observed metric must be present at each epoch
+                monitor='val_loss',         # Metric to observe
+                min_delta=0.00,             # minimum change to consider an improvement
+                patience=10,                # number of epochs without improvement before stopping
+                verbose=True,               # print messages of early stopping
+                mode='min',                 # minimizing the metric
+                strict=True,                # if True, observed metric must be present at each epoch
             )
             
             # Define trainer

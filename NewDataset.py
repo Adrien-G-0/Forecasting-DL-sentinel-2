@@ -16,14 +16,15 @@ with open('params.json', 'r') as f:
 class Dataset(data.Dataset):
     def __init__(self, root_dir,sources, split='train', pca=False, trans=None):
         """
-        Dataset pour structure avec fichiers avec une structure: dara/ train or test or val /image_ number / type of data.tif such as SAR...
+        Dataset for structure with files with structure: dara/ train or test or val /image_ number / type of data.tif such as sar...
 
         Args:
-            root_dir (str): Dossier racine contenant les splits (train/val/test).
-            split (str): Le sous-dossier à charger ('train', 'val', 'test').
-            pca (bool): Pour future compatibilité PCA.
-            trans (callable): Transformations à appliquer à (inputs, targets).
+        root_dir (str): Root folder containing splits (train/val/test).
+        split (str): The sub-folder to load ('train', 'val', 'test').
+        pca (bool): For future PCA compatibility.
+        trans (callable): Transformations to apply to (inputs, targets).
         """
+
         self.root_dir = os.path.join(root_dir, split)
         self.image_dirs = sorted([
             d for d in os.listdir(self.root_dir)
@@ -32,15 +33,15 @@ class Dataset(data.Dataset):
         self.pca = pca
         self.trans = trans
 
-        # Définit les types de données attendus (ordre : inputs puis targets)
+        # Defines the expected data types (order: inputs then targets)
         self.input_types = list(sources).copy()
         self.target_types = ['ndvi'] 
-        #Adaptation du nom des sources aux nom des fichier
-        #TODO a améliore, soit change le nom des fichiers soit adapter le reste du code pour tout changer dem en dtm
+        #Adapting source names to file names
+        #TODO has improved, either change the file names or adapt the rest of the code to change everything dem to dtm
         for i in range(len(self.input_types)):
             if self.input_types[i] == "dem" :
                 self.input_types[i]="dtm"
-        print('')
+
     def __len__(self):
         return len(self.image_dirs)
 
@@ -64,14 +65,14 @@ class Dataset(data.Dataset):
             path = os.path.join(folder_path, f"{t}.tif")
             
             if not os.path.isfile(path):
-                raise FileNotFoundError(f"Fichier d'entrée manquant : {path}")
+                raise FileNotFoundError(f"Missing file : {path}")
             img = self.read_tif(path)
             if t=='lc':
-                # Convertir l'image en one-hot
+                # Onehot encoding 
                 img = self.onehot(img,conf['num_class_lc'])
                 img = img.astype(np.float32)
             if t=='sau':
-                # Convertir l'image en one-hot
+                # Onehot encoding 
                 img = self.onehot(img,conf['num_class_sau'])
                 img = img.astype(np.float32)
             inputs.append(torch.from_numpy(img).float())
@@ -98,34 +99,30 @@ class Dataset(data.Dataset):
 
     def onehot(self, cover_tif,num_class):
         """
-        Convertit une image de classification en une représentation one-hot.
-        Préserve le type d'entrée (numpy.ndarray ou torch.Tensor).
+        Converts a classification image into a one-hot representation.
+        Preserves the input type (numpy.ndarray or torch.Tensor).
         
         Args:
-           cover_tif (numpy.ndarray ou torch.Tensor): Image de classification.
+        cover_tif (numpy.ndarray or torch.Tensor): Classification image.
         
         Returns:
-            Même type que l'entrée: Image one-hot encodée.
+        Same type as input: Encoded one-hot image.
         """  
         if isinstance(cover_tif, np.ndarray):
-            # Cas NumPy
+            # NumPy
             cover_tif= np.array(cover_tif, dtype=np.uint8)
             one_hot = np.eye(num_class)[cover_tif]
             one_hot = one_hot.squeeze()
             return one_hot
         
         elif isinstance(cover_tif, torch.Tensor):
-        # Cas PyTorch
-            # Supprimer la dernière dimension si elle est de taille 1
+        # PyTorch
             if cover_tif.shape[-1] == 1:
                 cover_squeezed = cover_tif.squeeze(-1)
             else:
-                cover_squeezed = cover_tif
-            
-            # Créer la matrice identité sur le bon device
-            eye = torch.eye(num_class, dtype=torch.float32)
-            
-            # One-hot encoding
+                cover_squeezed = cover_tif         
+
+            eye = torch.eye(num_class, dtype=torch.float32)           
             one_hot = eye[cover_squeezed.long()]
             
             return one_hot

@@ -41,9 +41,9 @@ class NewArchitectures(Base):
                 if source == 'sar' :
                     input_channels = input_channels +2
                 if source == 'lc':
-                    input_channels = input_channels +self.conf['num_classes_lc']  # should be 8
+                    input_channels = input_channels +8#self.conf['num_class_lc']  # should be 8
                 if source == 'sau':
-                    input_channels = input_channels +self.conf['num_classes_sau']  # should be 10
+                    input_channels = input_channels +10#self.conf['num_class_sau']  # should be 10
         
             # define architecture
             self.net=Unet(input_channels)
@@ -52,7 +52,7 @@ class NewArchitectures(Base):
 
         # middle fusion
         elif self.conf['method'] == 'middle_fusion':
-            # TODO
+            # TODO change the dimensio embedind to 8 or 16
             sources = self.conf['sources']
             self.fusion_en = mf_(sources)
             in_channels_middle_fusion = len(sources) * 64           
@@ -123,7 +123,7 @@ class NewArchitectures(Base):
 
 
     def create_transform_function(self, transform_list):
-        # create function
+        # create transformation function
         def transform_inputs(inps):
             # create transformation
             sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc','sau', 'ndvi']
@@ -139,14 +139,12 @@ class NewArchitectures(Base):
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
             # no normalization for lc and sau because it is onehot encoded
 
-            
-            
-            #No need to permute the images because transformlations is doing everything
+
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
             hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
             dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
             sar = (sar.numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
-            #no need to normalize the ndvi because it is already between -1 and 1
+            #no need to normalize the ndvi because it is already between -1 and 1 and lc,sau are onehot encoded
             ndvi = ndvi.numpy()
             lc=lc.numpy()
             sau=sau.numpy()
@@ -165,7 +163,7 @@ class NewArchitectures(Base):
             sar = normalize_sar(image=sar)['image']
 
 
-            # set
+            # initialize the transforms
             transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
                                     additional_targets={'hs': 'image',
                                                         'dem': 'image',
@@ -173,7 +171,7 @@ class NewArchitectures(Base):
                                                         'lc': 'image',
                                                         'sau': 'image',
                                                         'ndvi': 'image'})
-
+            # apply the transforms
             sample = transforms(image=rgb,
                                 hs=hs,
                                 dem=dem,
@@ -227,10 +225,6 @@ class NewArchitectures(Base):
         
 
     def val_transforms(self):
-        # print("self.conf keys:", self.conf.keys())
-        # print("self.mean_dict:", self.mean_dict if hasattr(self, 'mean_dict') else "Not Defined")
-        # print("self.std_dict:", self.std_dict if hasattr(self, 'std_dict') else "Not Defined")
-        # print("self.max_dict:", self.max_dict if hasattr(self, 'max_dict') else "Not Defined")        
         
         # create transformation
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
@@ -318,7 +312,6 @@ class Unet(torch.nn.Module):
         self.decoder3 = UpsamplingBlock(128, 64, 128)
         self.decoder4 = UpsamplingBlock(64, 1, 64)
 
-        # self.final_conv = torch.nn.Conv2d(64, 1, kernel_size=1) # opération similaire à une couche linéaire mais mieux car préserve l'aspect spatial
         self.activation = torch.nn.Sigmoid()
 
     def forward(self, x):
@@ -335,8 +328,8 @@ class Unet(torch.nn.Module):
         output = self.decoder4(x,residual1)
 
 
-        output=self.activation(output)  # Test to remoove the activation function because the output is alsmost close to 0 and 1
-        return 2*output-1 # to return NDVI value between -1 and 1
+        output=self.activation(output)  
+        return 2*output-1 # Rescale output to [-1, 1] range
     
 
 def count_parameters(model):

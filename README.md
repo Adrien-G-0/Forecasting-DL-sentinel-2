@@ -2,6 +2,8 @@
 
 This repository allows you to train a model with different architectures and modalities to evaluate NDVI from satellite imagery.
 
+The architecture of the model is a U-net shaped network with a possibility of adding small CNN before the concatenation of all the modalities.
+
 ## Architecture
 
 ### TimeArchitecures
@@ -16,6 +18,7 @@ All modalities are resized to be processed with a size of [channels, 256, 256].
 ### Data Processing
 - **Transformation**: min-max normalization
 - **Train augmentation**: uniform rotation
+- **Class-images**: OneHot encoding
 
 ### middle_fusion_.py
 **Features**:
@@ -46,21 +49,24 @@ Create a params.json file based on the empty_params.json file at the root of the
 - `root_dir`: path to the folder containing train, val, and test folders
 - `mean_dict_01`, `std_dict_01`, `max_dict_01`, `max_dict`, `min_dict`: paths used for min-normalization, required for all data types
 - `method`: either "early_fusion" or "middle_fusion"
-- `sources`: a list containing "rgb", "hs", "dem", "sar"
+- `sources`: a list containing "rgb", "hs", "dem", "sar", "lc", "sau"
 
 ## Data Storage
 
 Your data should be stored in a folder with the following structure:
-
+all files names are : source.tif 
 ```
 Sources/
 ├── train/
 │   └── image_1/
+│       └── lc.tif
+│       └── sau.tif
 │       └── sar.tif
 │       └── rgb.tif
 │       └── dtm.tif
 │       └── hs.tif
 │       └── ndvi.tif
+│       └── ...
 ├── val/
 │   └── image_2/
 │       └── sar.tif
@@ -68,6 +74,7 @@ Sources/
 │       └── dtm.tif
 │       └── hs.tif
 │       └── ndvi.tif
+│       └── ...
 └── test/
     └── image_3/
         └── sar.tif
@@ -75,6 +82,7 @@ Sources/
         └── dtm.tif
         └── hs.tif
         └── ndvi.tif
+│       └── ...
 ```
 
 Run the `NewArchitectures.py` file in the command terminal with the following arguments:
