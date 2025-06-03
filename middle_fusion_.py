@@ -18,25 +18,18 @@ class ConvBlock_mf(nn.Module):
         return self.conv(x)
 
 class Middle_fusion_en(nn.Module):
-    def __init__(self, sources,
-                conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
-                conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
-                conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
-                conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
-                conf_lc={'channels':[8,32,64], 'kernels':[3,3]},
-                conf_sau={'channels':[10,32,64], 'kernels':[3,3]}
-                ):
+    def __init__(self, conf):
         super(Middle_fusion_en, self).__init__()
-        self.sources = sources
-        self.conv = {}
+        self.sources = conf["sources"]
+        self.conv = nn.ModuleDict()
         
         # Store configurations
-        self.conf_rgb = conf_rgb
-        self.conf_dem = conf_dem
-        self.conf_sar = conf_sar
-        self.conf_hs = conf_hs
-        self.conf_lc = conf_lc
-        self.conf_sau = conf_sau
+        self.conf_rgb = conf["conf_rgb"]
+        self.conf_dem = conf["conf_dem"]
+        self.conf_sar = conf["conf_sar"]
+        self.conf_hs = conf["conf_hs"]
+        self.conf_lc = conf["conf_lc"]
+        self.conf_sau = conf["conf_sau"]
         
         # Check if the sources are valid
         if not all(source in ['rgb', 'hs',  'dem','sar','lc','sau'] for source in self.sources):
@@ -56,31 +49,29 @@ class Middle_fusion_en(nn.Module):
         if len(self.conf_sau['channels']) != len(self.conf_sau['kernels']) + 1: 
             raise Exception("SAU configurations are wrong, channels length must be equal to kernels length + 1")
         
-        # # Create convolutional blocks for each source
-        # for source in self.sources:
-        #     if source == 'rgb':
-        #         self.conv[source] = ConvBlock_mf(self.conf_rgb)
-        #     elif source == 'hs':
-        #         self.conv[source] = ConvBlock_mf(self.conf_hs)
-        #     elif source == 'sar':
-        #         self.conv[source] = ConvBlock_mf(self.conf_sar)
-        #     elif source == 'dem':
-        #         self.conv[source] = ConvBlock_mf(self.conf_dem)
-        #     elif source == 'lc':
-        #         self.conv[source] = ConvBlock_mf(self.conf_lc)
-        #     elif source == 'sau':
-        #         self.conv[source] = ConvBlock_mf(self.conf_sau)
+        # Create convolutional blocks for each source
+        for source in self.sources:
+            if source == 'rgb':
+                self.conv[source] = ConvBlock_mf(self.conf_rgb)
+            elif source == 'hs':
+                self.conv[source] = ConvBlock_mf(self.conf_hs)
+            elif source == 'sar':
+                self.conv[source] = ConvBlock_mf(self.conf_sar)
+            elif source == 'dem':
+                self.conv[source] = ConvBlock_mf(self.conf_dem)
+            elif source == 'lc':
+                self.conv[source] = ConvBlock_mf(self.conf_lc)
+            elif source == 'sau':
+                self.conv[source] = ConvBlock_mf(self.conf_sau)
         
         # # Register the modules properly
         # for source in self.sources:
         #     setattr(self, f'conv_{source}', self.conv[source])
         
-        # Create convolutional blocks for each source
-        for source in self.sources:
-            config = getattr(self, f'conf_{source}', None)
-            if config is not None:
-                setattr(self, f'conv_{source}', ConvBlock_mf(config))
-    
+        
+        # for source in self.sources:
+        #    config = getattr(self, f'conf_{source}', None)
+        #    self.conv[source] = ConvBlock_mf(config)
 
 
     
@@ -102,8 +93,18 @@ class Middle_fusion_en(nn.Module):
 
 
 if __name__ == '__main__':
-        source=['rgb', 'hs', 'dem','sar','lc','sau']
-        model=Middle_fusion_en(source)
+        
+
+#  conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
+#  conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
+#  conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
+#  conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
+#  conf_lc={'channels':[8,32,64], 'kernels':[3,3]},
+#  conf_sau={'channels':[10,32,64], 'kernels':[3,3]}
+        import json
+        with open('params.json') as f:
+            conf = json.load(f)
+        model=Middle_fusion_en(conf)
         print(model)
         inputa_rgb=torch.randn(1,3,256,256)
         inputa_hs=torch.randn(1,182,256,256)
@@ -111,6 +112,6 @@ if __name__ == '__main__':
         inputa_sar=torch.randn(1,2,256,256)
         inputa_lc=torch.randn(1,8,256,256)
         inputa_sau=torch.randn(1,10,256,256)
-        inputs=[inputa_rgb, inputa_hs,inputa_dem, inputa_sar,inputa_lc,inputa_sau]
+        inputs=[inputa_dem, inputa_sar,inputa_lc,inputa_sau]
         output=model(inputs)
         print(output.shape)

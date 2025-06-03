@@ -1,9 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import torch
 from NewArchitectures import NewArchitectures
 import weightwatcher as ww
-import glob,os
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
+
 
 def comparaison_prediction(model_path, batch_idx):
     device="cuda"
@@ -94,17 +95,38 @@ def visualize_weights(model_path,savefig=None):
     # Sauvegarder les résultats
     plt_alpha_ww(details, savefig=savefig)
 
-        
-def main():
-    # Load the model from checkpoint
-    model = NewArchitectures.load_from_checkpoint("checkpoints/dem_sar/version_0/checkpoints/last.ckpt")
-    model.eval()
-    dl= model.test_dataloader()
-    # Get a batch of data
-    inputs, targets, folder = list(dl)[0]
-    print(np.shape(inputs[0]))
-    #
-    comparaison_prediction()
 
-if __name__ == "__main__":
-    main()
+def ww_model(model, savefig=None):
+    alpha_values=[]
+    color=[]
+    if model.conf['method'] == 'middle_fusion':
+        watcher = ww.WeightWatcher(model=model.fusion_en)
+        details = watcher.analyze()
+        alpha_values.extend(details.alpha.tolist())
+        color.extend(['blue'] * len(details.alpha))
+    
+    watcher = ww.WeightWatcher(model=model.net)
+    details = watcher.analyze()
+    alpha_values.extend(details.alpha.tolist())
+    color.extend(['green'] * len(details.alpha))
+
+    plt.subplots(figsize=(12, 6))  # Un seul rang, deux colonnes
+
+    # Graphique en barres sur l'axe de droite    
+    plt.bar(range(len(alpha_values)), alpha_values, color=color)
+    plt.xlabel("Couches")
+    plt.ylabel("Alpha (Weight Watcher)")
+    plt.title("Qualité des couches par alpha")
+    
+    plt.xticks(range(len(alpha_values)), rotation=45, ha='right')
+    plt.legend(handles=[
+        Patch(color='blue', label='Middle Fusion'),
+        Patch(color='green', label='Unet'),
+        Line2D([0], [0], color="r", linestyle="--", label="over-fitted (α < 2)"),
+        Line2D([0], [0], color="orange", linestyle="--", label="Under fitted (α > 6)")
+    ])
+
+    if savefig:
+        plt.savefig(savefig, bbox_inches='tight')
+    else:
+        plt.show()

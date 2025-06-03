@@ -54,8 +54,8 @@ class NewArchitectures(Base):
         elif self.conf['method'] == 'middle_fusion':
             # TODO change the dimensio embedind to 8 or 16
             sources = self.conf['sources']
-            self.fusion_en = mf_(sources)
-            in_channels_middle_fusion = len(sources) * 64           
+            self.fusion_en = mf_(self.conf)
+            in_channels_middle_fusion = np.sum(self.conf['conf_'+source]["channels"][-1] for source in sources)  # last channel of each source 
             
             # define architecture
             self.net = Unet(in_channels_middle_fusion)

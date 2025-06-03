@@ -24,5 +24,12 @@
   "gradient_clipping": 0.5,
   "method": "",
   "sources": [],
-  "root_dir": ""
+  "root_dir": "",
+  
+  "conf_rgb":{"channels":[3,16,32], "kernels":[3,3]},
+  "conf_hs":{"channels":[182,128,64,32], "kernels":[3,3,3]},
+  "conf_dem":{"channels":[1,8,32], "kernels":[3,3]},
+  "conf_sar":{"channels":[2,8,16,32], "kernels":[3,3,3]},
+  "conf_lc":{"channels":[8,16,32], "kernels":[3,3]},
+  "conf_sau":{"channels":[10,16,32], "kernels":[3,3]}
 }

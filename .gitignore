@@ -187,6 +187,6 @@ old/
 .vscode/
 lightning_logs/
 WeightWatcher/
-
+img_saved/
 # Python
 lancements_consécutifs.py
