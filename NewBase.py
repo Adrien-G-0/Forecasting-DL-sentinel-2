@@ -152,10 +152,11 @@ class Base(pl.LightningModule):
                             weight_decay = self.conf['weight_decay'],
                             lr = self.conf['learning_rate'])
         
-        LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
-                        "interval": "epoch",                       
-                        "monitor": "val_loss",
-                        "name": "Learning_rate"}
+        # Ecluded for now
+        # LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
+        #                 "interval": "epoch",                       
+        #                 "monitor": "val_loss",
+        #                 "name": "Learning_rate"}
         
         Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
                             "monitor":"val_loss",
@@ -164,7 +165,7 @@ class Base(pl.LightningModule):
 
         return {
                 "optimizer": optimizer,
-                "lr_schedulers": [LR_scheduler, Plateau_scheduler] 
+                "lr_scheduler": Plateau_scheduler 
                 }
         ## Manually handle multiple schedulers
         return {
