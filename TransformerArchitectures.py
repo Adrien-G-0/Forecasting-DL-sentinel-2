@@ -1,12 +1,407 @@
 import torch
 import torch.nn as nn
-import numpy as np
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+
 import math
-# from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
-# from transformers import  ViTConfig, ViTModel
-# from torchvision import transforms
-from torch.utils.data import DataLoader,TensorDataset  
 import time
+import pickle
+import numpy as np
+
+from albumentations.pytorch import ToTensorV2
+from albumentations.pytorch.transforms import ToTensorV2
+import albumentations as A
+
+from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
+from transformers import ViTConfig, ViTModel
+from NewBase import Base
+from middle_fusion_ import Middle_fusion_en as mf_
+
+
+class TransformerArchitectures(Base):
+    def __init__(self, params):
+        # init base
+        super(TransformerArchitectures, self).__init__(params)
+        
+        # reorganize sources values
+        source_order = ['rgb', 'hs', 'dem', 'sar','lc','sau']
+        ordered_sources = []
+        for source in source_order:
+            if source in self.conf['sources']:
+                ordered_sources.append(source)
+        self.conf['sources'] = ordered_sources
+
+        # early fusion
+        if self.conf['method'] == 'early_fusion':
+
+            input_channels = 0
+            for source in self.conf['sources']:
+                if source == 'rgb':
+                    input_channels = input_channels + 3
+                if source == 'hs':
+                    input_channels = input_channels + 182
+                if source =='dem':
+                    input_channels = input_channels + 1
+                if source == 'sar' :
+                    input_channels = input_channels +2
+                if source == 'lc':
+                    input_channels = input_channels +8#self.conf['num_class_lc']  # should be 8
+                if source == 'sau':
+                    input_channels = input_channels +10#self.conf['num_class_sau']  # should be 10
+        
+            # define architecture
+            self.net=ViTWithDecoder(input_size=self.conf['train_size'][0],
+                                    num_patches=self.conf['num_patches'],
+                                    embed_dim=self.conf['embed_dim'],
+                                    embedding_type=self.conf['embedding_type'],
+                                    dropout=self.conf['dropout'],
+                                    in_channels=input_channels,
+                                    patch_size=self.conf['patch_size'],
+                                    num_layers=self.conf['num_layers'],
+                                    num_heads=self.conf['num_heads'],
+                                    mlp_ratio=self.conf['mlp_ratio'],
+                                    attention_dropout=self.conf['attention_dropout'],
+                                    drop_path_rate=self.conf['drop_path_rate'],
+                                    norm_layer=nn.LayerNorm,
+                                    activation=self.conf['activation'],
+                                    return_attention=False
+            )
+            # Initialization_weight TODO
+
+
+        # middle fusion
+        elif self.conf['method'] == 'middle_fusion':
+            # TODO change the dimensio embedind to 8 or 16
+            sources = self.conf['sources']
+            self.fusion_en = mf_(self.conf)
+            in_channels_middle_fusion = np.sum(self.conf['conf_'+source]["channels"][-1] for source in sources)  # last channel of each source 
+            
+            # define architecture
+            self.net = Unet(in_channels_middle_fusion)
+            # Initialization_weight TODO
+
+
+        self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
+        self.std_dict = self.load_dict(self.conf['std_dict_01'])
+        self.max_dict = self.load_dict(self.conf['max_dict_01'])
+        self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
+        self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
+
+    def load_dict(self, name):
+        with open(name, 'rb') as f:
+            loaded_dict = pickle.load(f)
+
+        return loaded_dict
+    
+    def forward(self, batch): 
+
+        components = {}
+        for source, input_tensor in zip(self.conf['sources'], batch):
+            components[source] = input_tensor
+            
+        
+        if self.conf['method'] == 'early_fusion':
+            first_flag = True
+            inp = None
+        
+            for source in self.conf['sources']:
+                if first_flag:
+                    inp = components[source]
+                    first_flag = False
+                else:
+                    inp = torch.cat([inp, components[source]], axis=1)
+
+            with torch.device("meta"):
+                model = self.net
+                x = inp
+
+            model_fwd = lambda: model(x)
+            fwd_flops = measure_flops(model, model_fwd)
+            # print("flops:" + str(fwd_flops))
+            output = self.net(inp)
+            return output
+        
+        
+        elif self.conf['method'] == 'middle_fusion':
+            
+
+            inp = self.fusion_en(batch)
+
+            with torch.device("meta"):
+                model = self.net
+                x = inp
+
+            model_fwd = lambda: model(x)
+            fwd_flops = measure_flops(model, model_fwd)
+            # print("flops:" + str(fwd_flops))
+
+            output = self.net(inp)
+            
+            return output     
+
+
+
+    def create_transform_function(self, transform_list):
+        # create transformation function
+        def transform_inputs(inps):
+            # create transformation
+            sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc','sau', 'ndvi']
+            inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
+
+            # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
+            inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
+            rgb, hs, dem, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+
+
+            normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
+            #no normalization for ndvi because it is already between -1 and 1
+            ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
+            # no normalization for lc and sau because it is onehot encoded
+
+
+            rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
+            hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
+            dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
+            sar = (sar.numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
+            #no need to normalize the ndvi because it is already between -1 and 1 and lc,sau are onehot encoded
+            ndvi = ndvi.numpy()
+            lc=lc.numpy()
+            sau=sau.numpy()
+
+            rgb = rgb.astype(np.float32)
+            hs = hs.astype(np.float32)
+            dem = dem.astype(np.float32)
+            sar = sar.astype(np.float32)
+            ndvi = ndvi.astype(np.float32)
+            lc = lc.astype(np.float32)
+            sau = sau.astype(np.float32)
+            
+            rgb = normalize_rgb(image=rgb)['image']
+            hs = normalize_hs(image=hs)['image']
+            dem = normalize_dem(image=dem)['image']
+            sar = normalize_sar(image=sar)['image']
+
+
+            # initialize the transforms
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
+                                    additional_targets={'hs': 'image',
+                                                        'dem': 'image',
+                                                        'sar': 'image',
+                                                        'lc': 'image',
+                                                        'sau': 'image',
+                                                        'ndvi': 'image'})
+            # apply the transforms
+            sample = transforms(image=rgb,
+                                hs=hs,
+                                dem=dem,
+                                sar=sar,
+                                lc=lc,
+                                sau=sau,
+                                ndvi=ndvi
+                                
+                                )
+            # get images
+            rgb = sample['image']
+            hs = sample['hs']
+            dem = sample['dem']
+            sar = sample['sar']
+            lc= sample['lc']
+            sau = sample['sau']
+            ndvi = sample['ndvi']
+
+            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
+            # get needed output values without the others
+            output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
+            return output
+            
+
+        # return the function
+        return transform_inputs
+
+    def train_transforms(self):
+        # define training size
+        train_size = self.conf['train_size'] if 'train_size' in self.conf else self.conf['input_size']
+        # create transformation
+
+        normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
+        normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
+        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
+
+        transforms_augmentation = A.Compose([A.Resize(*self.conf['input_size']),
+            A.crops.transforms.RandomCrop(*train_size),
+            A.Rotate(limit=[-180, 180]),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.Transpose(p=0.5),
+            ToTensorV2()
+        ], is_check_shapes=False)
+
+        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+
+        # create transform function
+        return self.create_transform_function(transforms)
+        
+
+    def val_transforms(self):
+        
+        # create transformation
+        normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
+        normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
+        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
+
+        transforms_augmentation = A.Compose([
+            A.Resize(*self.conf['input_size']),
+            ToTensorV2()
+        ], is_check_shapes=False)
+
+        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+        
+        # create transform function
+        return self.create_transform_function(transforms)
+    
+    def test_transforms(self):
+        return self.val_transforms()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class PositionalEmbedding(nn.Module):
+    """
+    Positional Embedding pour Vision Transformer (ViT)
+    Supporte les embeddings apprenables et sinusoïdaux
+    """
+    
+    def __init__(self, 
+                 num_patches, 
+                 embed_dim, 
+                 embedding_type='learnable',
+                 dropout=0.1):
+        """
+        Args:
+            num_patches (int): Nombre de patches dans l'image
+            embed_dim (int): Dimension des embeddings
+            embedding_type (str): 'learnable' ou 'sinusoidal'
+            dropout (float): Taux de dropout
+        """
+        super().__init__()
+        
+        self.num_patches = num_patches
+        self.embed_dim = embed_dim
+        self.embedding_type = embedding_type
+        
+        
+        # Nombre total de positions (patches + éventuellement CLS token)
+        self.num_positions = num_patches 
+        
+        if embedding_type == 'learnable':
+            # Embeddings apprenables (approche standard ViT)
+            self.pos_embedding = nn.Parameter(
+                torch.randn(1, self.num_positions, embed_dim) * 0.02
+            )
+        elif embedding_type == 'sinusoidal':
+            # Embeddings sinusoïdaux fixes (comme dans les Transformers originaux)
+            self.register_buffer('pos_embedding', 
+                               self._create_sinusoidal_embeddings())
+        else:
+            raise ValueError("embedding_type doit être 'learnable' ou 'sinusoidal'")
+            
+        self.dropout = nn.Dropout(dropout)
+    
+    def _create_sinusoidal_embeddings(self):
+        """Crée les embeddings positionnels sinusoïdaux"""
+        pe = torch.zeros(self.num_positions, self.embed_dim)
+        position = torch.arange(0, self.num_positions).unsqueeze(1).float()
+        
+        div_term = torch.exp(torch.arange(0, self.embed_dim, 2).float() *
+                           -(math.log(10000.0) / self.embed_dim))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        
+        return pe.unsqueeze(0)  # Ajoute la dimension batch
+    
+    def forward(self, x):
+        """
+        Args:
+            x (torch.Tensor): Tensor d'entrée de shape (batch_size, seq_len, embed_dim)
+                             où seq_len = num_patches
+        
+        Returns:
+            torch.Tensor: x + positional embeddings avec dropout appliqué
+        """
+        batch_size, seq_len, _ = x.shape
+        
+        # Vérification des dimensions
+        if seq_len != self.num_positions:
+            raise ValueError(f"Longueur de séquence {seq_len} ne correspond pas "
+                           f"au nombre de positions {self.num_positions}")
+        
+        # Ajoute les embeddings positionnels
+        # pos_embedding = self.pos_embedding.expand(batch_size, seq_len, self.embed_dim)
+        x = x + self.pos_embedding[:, :seq_len, :]
+        return self.dropout(x)
+    
+    def interpolate_pos_embedding(self, new_num_patches):
+        """
+        Interpole les embeddings positionnels pour une nouvelle taille d'image
+        Utile pour le fine-tuning avec des résolutions différentes
+        """
+        if self.embedding_type != 'learnable':
+            raise NotImplementedError("L'interpolation n'est supportée que pour les embeddings apprenables")
+        
+        old_num_patches = self.num_patches
+        
+        if old_num_patches == new_num_patches:
+            return
+        
+        
+        patch_pos_embed = self.pos_embedding
+        
+        # Calcule les dimensions de la grille
+        old_grid_size = int(math.sqrt(old_num_patches))
+        new_grid_size = int(math.sqrt(new_num_patches))
+        
+        # Reshape pour interpolation 2D
+        patch_pos_embed = patch_pos_embed.reshape(
+            1, old_grid_size, old_grid_size, self.embed_dim
+        ).permute(0, 3, 1, 2)  # (1, embed_dim, H, W)
+        
+        # Interpolation bilinéaire
+        patch_pos_embed = torch.nn.functional.interpolate(
+            patch_pos_embed,
+            size=(new_grid_size, new_grid_size),
+            mode='bilinear',
+            align_corners=False
+        )
+        
+        # Reshape vers la forme originale
+        patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).reshape(
+            1, new_num_patches, self.embed_dim
+        )
+        
+        # Reconstruit les embeddings complets
+        new_pos_embedding = patch_pos_embed
+        
+        # Met à jour les paramètres
+        self.pos_embedding = nn.Parameter(new_pos_embedding)
+        self.num_patches = new_num_patches
+        self.num_positions = new_num_patches + (1 if self.include_cls_token else 0)
 
 
 class PatchEmbedding(nn.Module):
@@ -30,20 +425,404 @@ class PatchEmbedding(nn.Module):
 
         return x 
         
-class TEncoder(nn.Module):
-    def __init__(self, embed_dim, num_heads, num_layers, dropout=0.1):
+class DropPath(nn.Module):
+    """
+    Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)
+    """
+    def __init__(self, drop_prob=None):
         super().__init__()
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim, nhead=num_heads, 
-            dim_feedforward=embed_dim * 4, 
-            dropout=dropout,
-            batch_first=True
-        )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.drop_prob = drop_prob
 
     def forward(self, x):
-        x = self.transformer_encoder(x)
+        if self.drop_prob == 0.0 or not self.training:
+            return x
+        keep_prob = 1 - self.drop_prob
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+        random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+        random_tensor.floor_()
+        output = x.div(keep_prob) * random_tensor
+        return output
+
+
+class MultiHeadSelfAttention(nn.Module):
+    """
+    Module d'auto-attention multi-têtes avec nombre de têtes variable
+    """
+    def __init__(self, embed_dim, num_heads, dropout=0.1, bias=True):
+        super().__init__()
+        assert embed_dim % num_heads == 0, f"embed_dim ({embed_dim}) doit être divisible par num_heads ({num_heads})"
+        
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.scale = 1.0 / math.sqrt(self.head_dim)
+        
+        # Projections pour Q, K, V
+        self.qkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
+        
+        # Projection de sortie
+        self.proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        
+        # Dropout
+        self.attn_dropout = nn.Dropout(dropout)
+        self.proj_dropout = nn.Dropout(dropout)
+        
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: [batch_size, seq_len, embed_dim]
+            mask: [batch_size, seq_len, seq_len] ou None
+        Returns:
+            output: [batch_size, seq_len, embed_dim]
+            attention_weights: [batch_size, num_heads, seq_len, seq_len]
+        """
+        B, N, C = x.shape
+        
+        # Calcul de Q, K, V
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, head_dim]
+        
+        # Calcul des scores d'attention
+        attn_scores = (q @ k.transpose(-2, -1)) * self.scale  # [B, num_heads, N, N]
+        
+        # Application du masque si fourni
+        if mask is not None:
+            if mask.dim() == 3:  # [B, N, N]
+                mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
+            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
+        
+        # Softmax
+        attn_weights = F.softmax(attn_scores, dim=-1)
+        attn_weights = self.attn_dropout(attn_weights)
+        
+        # Application de l'attention aux valeurs
+        attn_output = (attn_weights @ v).transpose(1, 2).reshape(B, N, C)
+        
+        # Projection finale
+        output = self.proj(attn_output)
+        output = self.proj_dropout(output)
+        
+        return output, attn_weights
+
+class FeedForward(nn.Module):
+    """
+    Feed-Forward Network avec activation GELU
+    """
+    def __init__(self, embed_dim, mlp_ratio=4.0, dropout=0.1, activation='gelu'):
+        super().__init__()
+        hidden_dim = int(embed_dim * mlp_ratio)
+        
+        self.fc1 = nn.Linear(embed_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, embed_dim)
+        self.dropout = nn.Dropout(dropout)
+        
+        if activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
+        elif activation == 'swish':
+            self.activation = nn.SiLU()
+        else:
+            raise ValueError(f"Activation {activation} none supported, use 'gelu', 'relu' or 'swish'")
+    
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.dropout(x)
         return x
+
+
+
+class TransformerBlock(nn.Module):
+    """
+    Bloc Transformer avec auto-attention et feed-forward
+    """
+    def __init__(self, embed_dim, num_heads, mlp_ratio=4.0, dropout=0.1, 
+                 drop_path=0.0, norm_layer=nn.LayerNorm, activation='gelu'):
+        super().__init__()
+        
+        self.norm1 = norm_layer(embed_dim)
+        self.attn = MultiHeadSelfAttention(embed_dim, num_heads, dropout)
+        
+        self.norm2 = norm_layer(embed_dim)
+        self.mlp = FeedForward(embed_dim, mlp_ratio, dropout, activation)
+        
+        # DropPath (Stochastic Depth)
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        
+    def forward(self, x, mask=None):
+        # Auto-attention avec connexion résiduelle
+        attn_output, attn_weights = self.attn(self.norm1(x), mask)
+        x = x + self.drop_path(attn_output)
+        
+        # Feed-forward avec connexion résiduelle
+        mlp_output = self.mlp(self.norm2(x))
+        x = x + self.drop_path(mlp_output)
+        
+        return x, attn_weights
+
+class TransformerEncoder(nn.Module):
+    """
+    Encodeur Transformer avec auto-attention et paramètres flexibles
+    """
+    def __init__(self, 
+                 embed_dim=768,
+                 num_layers=12,
+                 num_heads=12,
+                 mlp_ratio=4.0,
+                 dropout=0.1,
+                 drop_path_rate=0.0,
+                 norm_layer=nn.LayerNorm,
+                 activation='gelu',
+                 return_attention=False):
+        """
+        Args:
+            embed_dim (int): Dimension des embeddings
+            num_layers (int): Nombre de couches Transformer
+            num_heads (int): Nombre de têtes d'attention
+            mlp_ratio (float): Ratio pour la dimension cachée du MLP
+            dropout (float): Taux de dropout
+            drop_path_rate (float): Taux de drop path (stochastic depth)
+            norm_layer: Couche de normalisation
+            activation (str): Fonction d'activation ('gelu', 'relu', 'swish')
+            return_attention (bool): Si True, retourne les poids d'attention
+        """
+        super().__init__()
+        
+        self.embed_dim = embed_dim
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+        self.return_attention = return_attention
+        
+        # Drop path rates (augmente linéairement avec la profondeur)
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_layers)]
+        
+        # Blocs Transformer
+        self.blocks = nn.ModuleList([
+            TransformerBlock(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                dropout=dropout,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+                activation=activation
+            ) for i in range(num_layers)
+        ])
+        
+        # Normalisation finale
+        self.norm = norm_layer(embed_dim)
+        
+        # Initialisation des poids
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.trunc_normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+    
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: [batch_size, seq_len, embed_dim]
+            mask: [batch_size, seq_len, seq_len] ou None
+        
+        Returns:
+            output: [batch_size, seq_len, embed_dim]
+            attention_weights: Liste des poids d'attention si return_attention=True
+        """
+        attention_weights = []
+        
+        for block in self.blocks:
+            x, attn_weights = block(x, mask)
+            if self.return_attention:
+                attention_weights.append(attn_weights)
+        
+        x = self.norm(x)
+        
+        if self.return_attention:
+            return x, attention_weights
+        else:
+            return x
+    
+    def get_attention_maps(self, x, layer_idx=None):
+        """
+        Récupère les cartes d'attention pour une couche spécifique
+        """
+        attention_weights = []
+        
+        for i, block in enumerate(self.blocks):
+            x, attn_weights = block(x)
+            attention_weights.append(attn_weights)
+            
+            if layer_idx is not None and i == layer_idx:
+                break
+        
+        if layer_idx is not None:
+            return x, attention_weights[layer_idx]
+        else:
+            return x, attention_weights
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, num_layers, embed_dim, num_heads, hidden_dim, drop_path_rate=0.):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            TransformerBlock(embed_dim, num_heads, hidden_dim, drop_path_rate)
+            for _ in range(num_layers)
+        ])
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+class ConvBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.bn=torch.nn.BatchNorm2d(out_channels)
+        self.relu = torch.nn.ReLU()
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
+class UpsamplingBlock(torch.nn.Module):
+        def __init__(self, in_channels, out_channels):
+            super(UpsamplingBlock, self).__init__()
+            self.upsample = torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.conv_block1 = ConvBlock(in_channels, in_channels)
+            self.conv_block2 = ConvBlock(in_channels, out_channels)
+
+        def forward(self, x):
+            x = self.upsample(x)
+            x = self.conv_block1(x)
+            x = self.conv_block2(x)
+            return x
+
+
+class CNNDecoder(nn.Module):
+    def __init__(self, patch_size,output_size,embed_dim, num_patches):
+        super().__init__()
+        self.patch_size = patch_size
+        self.output_size = output_size 
+        self.num_patches = num_patches
+        self.num_layers = int(np.log2(output_size // patch_size))  # Nombre de couches d'upsampling
+        self.dimension_reduction_rate = int(np.exp( np.log(embed_dim) / self.num_layers)) # Réduction de dimension par couche
+        self.upsampling_blocks = nn.ModuleList()
+        
+        in_channels = embed_dim
+        for i in range(self.num_layers-1):
+            out_channels = in_channels // self.dimension_reduction_rate
+            self.upsampling_blocks.append(
+                UpsamplingBlock(in_channels, out_channels)
+            )
+            in_channels = out_channels
+        self.final_conv = UpsamplingBlock(in_channels, 1)
+
+        self.activation = nn.Sigmoid()  # Activation pour la sortie finale
+
+    def forward(self, x):
+        """
+        Args:
+            x: [batch_size, num_patches, embed_dim]
+        
+        Returns:
+            output: [batch_size, output_size, output_size]
+        """
+        batch_size = x.size(0)
+        
+        # Reshape en patches
+        n_patches_sqrt = int(math.sqrt(self.num_patches))
+        x = x.view(batch_size, n_patches_sqrt, n_patches_sqrt, -1)
+        
+        # Permuter les dimensions pour CNN
+        x = x.permute(0, 3, 1, 2)
+        # Passer à travers les blocs d'upsampling
+        for block in self.upsampling_blocks:
+            x = block(x)
+        # Passer à travers la couche finale
+        x = self.final_conv(x)
+        x= 2*self.activation(x) -1 # Appliquer l'activation finale
+        # Retourner la sortie finale
+        return x
+
+        
+
+class ViTWithDecoder(nn.Module):
+    def __init__(self, 
+                 input_size,
+                 num_patches, 
+                 embed_dim, 
+                 embedding_type='learnable',
+                 dropout=0.1,
+                 in_channels=2, 
+                 patch_size:int=16,                 
+                 num_layers=4,
+                 num_heads=8,
+                 mlp_ratio=4.0,
+                 attention_dropout=0.1,
+                 drop_path_rate=0.0,
+                 norm_layer=nn.LayerNorm,
+                 activation='gelu',
+                 return_attention=False):
+        super().__init__()
+        self.patch_embedding = PatchEmbedding(img_size=input_size,
+                                              in_channels=in_channels,
+                                              embed_dim=embed_dim,
+                                              patch_size=patch_size)
+        
+        self.positional_embedding = PositionalEmbedding(num_patches=num_patches,
+                                                        embed_dim=embed_dim,
+                                                        embedding_type=embedding_type,
+                                                        dropout=dropout)
+        
+        self.encoder = TransformerEncoder(embed_dim=embed_dim,
+                                          num_layers=num_layers,
+                                          num_heads=num_heads,
+                                          mlp_ratio=mlp_ratio,
+                                          dropout=attention_dropout,
+                                          drop_path_rate=drop_path_rate,
+                                          norm_layer=norm_layer,
+                                          activation=activation,
+                                          return_attention=return_attention)
+        
+
+        self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+
+    def forward(self, x):
+        x = self.patch_embedding(x)
+        x = self.positional_embedding(x)
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+
+
+# class TransformerEncoder(nn.Module):
+#     def __init__(self, embed_dim, num_heads, num_layers, dropout=0.1):
+#         super().__init__()
+#         encoder_layer = nn.TransformerEncoderLayer(
+#             d_model=embed_dim, nhead=num_heads, 
+#             dim_feedforward=embed_dim * 4, 
+#             dropout=dropout,
+#             batch_first=True
+#         )
+#         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+#     def forward(self, x):
+#         x = self.transformer_encoder(x)
+#         return x
     
 
 
@@ -54,9 +833,9 @@ class VisionTransformer(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.embed_dim = embed_dim
-        
+
         self.patch_embedding = PatchEmbedding(img_size, in_channels, embed_dim, patch_size)
-        self.transformer_encoder = TEncoder(embed_dim, num_heads, num_layers, dropout)
+        self.transformer_encoder = TransformerEncoder(embed_dim, num_heads, num_layers, dropout)
         self.reg_token=nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, self.patch_embedding.n_patches + 1, embed_dim))
 
@@ -98,38 +877,238 @@ class VisionTransformer(nn.Module):
         return x
 
 
-img_size=256
-in_channels=4
-out_channels=1
-embed_dim=1024
-num_heads=8
-num_layers=4
-patch_size=16
-dropout=0.1
+# img_size=256
+# in_channels=4
+# out_channels=1
+# embed_dim=1024
+# num_heads=8
+# num_layers=4
+# patch_size=16
+# dropout=0.1
 
 
-model = VisionTransformer(
-    img_size=img_size,
-    out_channels=out_channels,
-    in_channels=in_channels,
-    embed_dim=embed_dim,
-    num_heads=num_heads,
-    num_layers=num_layers,
-    patch_size=patch_size,
-    dropout=dropout
-)
-print(model)
+# model = VisionTransformer(
+#     img_size=img_size,
+#     out_channels=out_channels,
+#     in_channels=in_channels,
+#     embed_dim=embed_dim,
+#     num_heads=num_heads,
+#     num_layers=num_layers,
+#     patch_size=patch_size,
+#     dropout=dropout
+# )
+# print(model)
 
-input_tensor = torch.randn(1, in_channels, img_size, img_size)  # Example input
-deb=time.time()
-output = model(input_tensor)
-time=time.time()-deb
-print("Time taken for forward pass:", time)
-print("Output shape:", output.shape)  # Should be (1, 1, patch_size, patch_size)
-
-
+# input_tensor = torch.randn(1, in_channels, img_size, img_size)  # Example input
+# deb=time.time()
+# output = model(input_tensor)
+# duration=time.time()-deb
+# print("Time taken for forward pass:", duration)
+# print("Output shape:", output.shape)  # Should be (1, 1, patch_size, patch_size)
 
 
+# image_size=256
+# patch_size=16
+# num_channels=4
+# hidden_size=1024
+# intermediate_size=4096
+# num_attention_heads=8
+# num_hidden_layers=8
+# hidden_act="gelu"
+# layer_norm_eps=1e-12
+# dropout_rate=0.1
+
+
+# # class visionTransformer
+# configuration = ViTConfig(
+#     image_size=image_size,
+#     patch_size=patch_size,
+#     num_channels=num_channels,
+#     hidden_size=hidden_size,
+#     intermediate_size=intermediate_size,
+#     num_attention_heads=num_attention_heads,
+#     num_hidden_layers=num_hidden_layers,
+#     hidden_act=hidden_act,
+#     layer_norm_eps=layer_norm_eps,
+#     dropout_rate=dropout_rate,
+# )
+
+# # Randomly initializing a model (with random weights) from the configuration
+
+# model = ViTModel(configuration)
+
+# # Accessing the model configuration
+
+# configuration = model.config
+
+# # class TimeseriesTransformer
+# print(model)
+# input_tensor = torch.randn(1, num_channels, img_size, img_size)  # Example input
+# deb=time.time()
+# output = model(input_tensor)
+# n_patches=(image_size//patch_size)**2
+# patch_representations=output.last_hidden_state[:,1:,:]
+# patch_representations=patch_representations.view(1, n_patches, configuration.hidden_size)
+# lineaire=nn.Linear(1024,256)
+# output_image=lineaire(patch_representations)
+# duration=time.time()-deb
+# print("Time taken for forward pass:", duration)
+# print("Output shape:", output_image.size())  # Should be (1, 1, patch_size, patch_size)
+
+
+
+
+
+# Exemple d'utilisation
+if __name__ == "__main__":
+    if False: #test patch embedding
+        # Paramètres d'exemple
+        img_size = 256
+        in_channels = 3
+        embed_dim = 768
+        patch_size = 16
+        batch_size = 8
+        # Création du module de patch embedding
+        patch_embedding = PatchEmbedding(img_size, in_channels, embed_dim, patch_size)
+        # Simulation d'un tensor d'entrée (image)
+        x = torch.randn(batch_size, in_channels, img_size, img_size)
+        # Application du patch embedding    
+        x_patches = patch_embedding(x)
+        print(f"Shape d'entrée: {x.shape}") 
+        print(f"Shape après patch embedding: {x_patches.shape}")
+    if False: #test positionnal embedding
+        # Paramètres d'exemple pour ViT-Base
+        num_patches = 256 
+        
+        
+        # Création des embeddings positionnels apprenables
+        pos_embed_learnable = PositionalEmbedding(
+            num_patches=num_patches,
+            embed_dim=embed_dim,
+            embedding_type='learnable',
+        )
+        
+        # Création des embeddings positionnels sinusoïdaux
+        pos_embed_sinusoidal = PositionalEmbedding(
+            num_patches=num_patches,
+            embed_dim=embed_dim,
+            embedding_type='sinusoidal',
+        )
+        
+        # Simulation d'un tensor d'entrée (patches)
+        x = torch.randn(batch_size, num_patches , embed_dim)
+        
+        # Application des embeddings
+        x_with_pos_learnable = pos_embed_learnable(x)
+        x_with_pos_sinusoidal = pos_embed_sinusoidal(x)
+        
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape avec pos embedding: {x_with_pos_learnable.shape}")
+        print(f"Paramètres apprenables: {sum(p.numel() for p in pos_embed_learnable.parameters())}")
+        print(f"Paramètres sinusoïdaux: {sum(p.numel() for p in pos_embed_sinusoidal.parameters())}")
+    if False: #test multi-head self attention
+        # Paramètres d'exemple
+        
+        num_heads = 8
+        batch_size = 8
+        seq_len = 256
+        
+        # Création du module MultiHeadSelfAttention
+        multihead_attn = MultiHeadSelfAttention(embed_dim, num_heads)
+        
+        # Simulation d'un tensor d'entrée (séquence)
+        x = torch.randn(batch_size, seq_len, embed_dim)
+        
+        # Application de l'auto-attention
+        output, attn_weights = multihead_attn(x)
+        
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape après auto-attention: {output.shape}")
+        print(f"Shape des poids d'attention: {attn_weights.shape}")
+    if False: #test transformer encoder
+
+        # Paramètres d'exemple
+        embed_dim = 768
+        num_heads = 12
+        num_layers = 4
+        batch_size = 8
+        seq_len = 256
+        dropout=0.1
+        mlp_ratio = 4.
+        drop_path_rate=0.0
+        norm_layer=nn.LayerNorm
+        activation='gelu'
+        return_attention=False
+        # Création du module Transformer Encoder
+        transformer_encoder = TransformerEncoder(
+                                embed_dim=embed_dim,
+                                num_layers=num_layers,
+                                num_heads=num_heads,
+                                dropout=dropout,
+                                mlp_ratio = mlp_ratio,
+                                drop_path_rate=drop_path_rate,
+                                norm_layer=norm_layer,
+                                activation=activation,
+                                return_attention=return_attention)
+        
+        # Simulation d'un tensor d'entrée (séquence)
+        x = torch.randn(batch_size, seq_len, embed_dim)
+        # Application de l'encodeur Transformer
+        output = transformer_encoder(x)
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape après Transformer Encoder: {output.shape}")
+    if False: #test decoder block
+
+        patch_size=16
+        output_size=256
+
+        embded_dim=1024
+        num_patches=256
+        
+        model=CNNDecoder(patch_size,output_size,embded_dim, num_patches)
+        x= torch.randn(1, num_patches, embded_dim)
+        output=model(x)
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape après CNN Decoder: {output.shape}")
+    if True: #test ViT with decoder
+        img_size = 256
+        in_channels = 10
+        out_channels = 1
+        embed_dim = 768
+        num_heads = 12
+        num_layers = 3
+        patch_size = 16
+        dropout = 0.1
+        num_patches = (img_size // patch_size) ** 2
+        
+        model = ViTWithDecoder(
+            input_size=img_size,
+            num_patches=num_patches,
+            embed_dim=embed_dim,
+            embedding_type='sinusoidal',
+            dropout=dropout,
+            in_channels=in_channels,
+            patch_size=patch_size,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            mlp_ratio=4.0,
+            attention_dropout=0.1,
+            drop_path_rate=0.0,
+            norm_layer=nn.LayerNorm,
+            activation='gelu',
+            return_attention=False
+        )
+        
+        # Simulation d'un tensor d'entrée (image)
+        x = torch.randn(1, in_channels, img_size, img_size)
+        
+        # Application du modèle ViT avec décodeur
+        t=time.time()
+        output = model(x)
+        print(f"Temps d'exécution: {time.time()-t:.2f} secondes")
+        print(f"Paramètres : {sum(p.numel() for p in model.parameters())}")
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape après ViT avec décodeur: {output.shape}")
 
 
 
@@ -140,7 +1119,5 @@ print("Output shape:", output.shape)  # Should be (1, 1, patch_size, patch_size)
 
 
 
-# class visionTransformer
 
 
-# class TimeseriesTransformer

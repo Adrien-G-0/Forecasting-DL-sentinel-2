@@ -1,0 +1,104 @@
+{
+    "mean_dict_01": "Sources/dict_stats/mean_dict_01.pkl",
+    "std_dict_01": "Sources/dict_stats/std_dict_01.pkl",
+    "max_dict_01": "Sources/dict_stats/max_dict_01.pkl",
+    "max_dict": "Sources/dict_stats/max_dict.pkl",
+    "min_dict": "Sources/dict_stats/min_dict.pkl",
+    "experiment_name": "02_06/",
+    "n_epochs": 100,
+    "batch_size": 8,
+    "num_workers": 7,
+    "pca": true,
+    "num_class_lc": 8,
+    "num_class_sau": 10,
+    "input_size": [
+        256,
+        352
+    ],
+    "train_size": [
+        256,
+        256
+    ],
+    "learning_rate": 0.0001,
+    "weight_decay": 0,
+    "gradient_clipping": 0.5,
+    "method": "middle_fusion",
+    "sources": [
+        "sar",
+        "sau"
+    ],
+    "root_dir": "Sorted_Sources",
+    "conf_rgb": {
+        "channels": [
+            3,
+            16
+        ],
+        "kernels": [
+            3
+        ]
+    },
+    "conf_hs": {
+        "channels": [
+            182,
+            128,
+            64,
+            32
+        ],
+        "kernels": [
+            3,
+            3,
+            3
+        ]
+    },
+    "conf_dem": {
+        "channels": [
+            1,
+            8,
+            16
+        ],
+        "kernels": [
+            3,
+            3
+        ]
+    },
+    "conf_sar": {
+        "channels": [
+            2,
+            8,
+            16
+        ],
+        "kernels": [
+            3,
+            3
+        ]
+    },
+    "conf_lc": {
+        "channels": [
+            8,
+            16
+        ],
+        "kernels": [
+            3
+        ]
+    },
+    "conf_sau": {
+        "channels": [
+            10,
+            16
+        ],
+        "kernels": [
+            3
+        ]
+    },
+    "num_patches": 16,
+    "embed_dim": 768,
+    "embedding_type": "sinusoidal",
+    "dropout": 0.1,
+    "patch_size": 16,
+    "num_layers": 4,
+    "num_heads": 12,
+    "mlp_ratio": 4,
+    "attention_dropout": 0.1,
+    "drop_path_rate": 0.0,
+    "activation": "gelu"
+}
