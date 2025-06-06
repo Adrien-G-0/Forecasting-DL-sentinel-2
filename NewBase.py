@@ -49,6 +49,8 @@ class Base(pl.LightningModule):
             'pearson': torchmetrics.PearsonCorrCoef()
         }, prefix='test_')
 
+        self.distribution_loss = torch.empty(0, device='cpu', dtype=torch.float32)
+
     def forward(self, batch):
         raise NotImplementedError('Base must be extended by child class that specifies the forward method.')
 
@@ -81,6 +83,10 @@ class Base(pl.LightningModule):
         predictions_flat = predictions.view(-1)  
         targets_flat = targets.view(-1)        
          
+        if batch_idx % 30 == 0:  # Enregistrer seulement pour le premier batch
+            self.logger.experiment.add_images('val_targets', targets, batch_idx)   
+            self.logger.experiment.add_images('val_predictions', predictions, batch_idx)  
+
         # avoid warning when variance is too low
         if predictions_flat.var() > 1e-3 :
             self.metrics['pearson'].update(predictions_flat, targets_flat) 
@@ -114,7 +120,17 @@ class Base(pl.LightningModule):
         self.metrics_test['ssim'].update(predictions, targets)
         
         predictions_flat = predictions.view(-1)  
-        targets_flat = targets.view(-1)        
+        targets_flat = targets.view(-1)   
+
+        if batch_idx in [0,20]:  # Enregistrer seulement pour le premier batch
+            self.logger.experiment.add_images('test_targets', targets, batch_idx)   
+            self.logger.experiment.add_images('test_predictions', predictions, batch_idx)  
+
+        # distribution of loss per image
+        loss=  F.l1_loss(predictions, targets, reduction='none')  
+        loss_per_image = loss.mean(dim=(1, 2, 3)).cpu() # Average loss per image
+        self.distribution_loss=torch.cat((self.distribution_loss, loss_per_image), dim=0)  # Concatenate losses
+
          
         
         if predictions_flat.var() > 1e-3 :
@@ -133,6 +149,11 @@ class Base(pl.LightningModule):
             self.log(key, value)
         
         self.metrics_test.reset()
+
+        #log the ditribution of loss
+        self.logger.experiment.add_histogram('loss_distribution', self.distribution_loss, self.current_epoch)
+
+
 
     def configure_optimizers(self):
         
@@ -158,7 +179,7 @@ class Base(pl.LightningModule):
         #                 "monitor": "val_loss",
         #                 "name": "Learning_rate"}
         
-        Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
+        Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=8),
                             "monitor":"val_loss",
                             "interval":"epoch",
                             "name":"ReduceLROnPlateau"}
@@ -308,7 +329,7 @@ if __name__ == '__main__':
         with open('params.json') as f:
             conf = json.load(f)
         model= NewArchitectures(conf)
-            # 5. Définissez les callbacks
+            # 5.callbacks
         callbacks = [
             RichProgressBar(),
             ModelCheckpoint(
@@ -316,7 +337,7 @@ if __name__ == '__main__':
                 mode='min',
                 save_top_k=1,
                 save_last=True,
-                filename='l1_loss-{epoch:02d}-{total:.4f}'
+                filename='l1_loss-{epoch:02d}-{val_loss:.4f}'
             ),
             LearningRateMonitor(logging_interval='epoch'),
             EarlyStopping(
@@ -329,23 +350,22 @@ if __name__ == '__main__':
             )
         ]
 
-        # 6. Créez le Trainer
+        # 6. Trainer
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=1,
-            max_epochs=conf['n_epochs'],
+            max_epochs=conf['n_epochs']*0,
             num_sanity_val_steps=2,
-            logger=TensorBoardLogger('checkpoints', name="test/"+conf['experiment_name']  + "_".join(conf['sources']+ ["_"] + [conf['method']])),
+            logger=TensorBoardLogger('checkpoints', name='test'+conf['experiment_name']  + "_".join(conf['sources'] + [conf['method']])),
             callbacks=callbacks
         )
-        # 7. Lancez l'entraînement
+        # 7. Training and test
         trainer.fit(model)
-        # conf = model.conf
 
         trainer.test(model)
     if False:
         # load from checkpoint
-        ckp="checkpoints/dem_sar/version_0/checkpoints/l1_loss-epoch=15-total=0.0000.ckpt"
+        ckp=""
         model = NewArchitectures.load_from_checkpoint(ckp)
         conf = model.conf
         tester = pl.Trainer()
