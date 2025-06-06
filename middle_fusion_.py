@@ -25,15 +25,15 @@ class Middle_fusion_en(nn.Module):
         
         # Store configurations
         self.conf_rgb = conf["conf_rgb"]
-        self.conf_dem = conf["conf_dem"]
+        self.conf_dtm = conf["conf_dtm"]
         self.conf_sar = conf["conf_sar"]
         self.conf_hs = conf["conf_hs"]
         self.conf_lc = conf["conf_lc"]
         self.conf_sau = conf["conf_sau"]
         
         # Check if the sources are valid
-        if not all(source in ['rgb', 'hs',  'dem','sar','lc','sau'] for source in self.sources):
-            raise Exception("Invalid sources, must be in ['rgb', 'hs', 'dem', 'sar','lc','sau' ]")
+        if not all(source in ['rgb', 'hs',  'dtm','sar','lc','sau'] for source in self.sources):
+            raise Exception("Invalid sources, must be in ['rgb', 'hs', 'dtm', 'sar','lc','sau' ]")
         
         # Check if the number of channels and kernels are consistent
         if len(self.conf_rgb['channels']) != len(self.conf_rgb['kernels']) + 1:
@@ -42,8 +42,8 @@ class Middle_fusion_en(nn.Module):
             raise Exception("HS configurations are wrong, channels length must be equal to kernels length + 1")
         if len(self.conf_sar['channels']) != len(self.conf_sar['kernels']) + 1:
             raise Exception("SAR configurations are wrong, channels length must be equal to kernels length + 1")
-        if len(self.conf_dem['channels']) != len(self.conf_dem['kernels']) + 1:
-            raise Exception("DEM configurations are wrong, channels length must be equal to kernels length + 1")
+        if len(self.conf_dtm['channels']) != len(self.conf_dtm['kernels']) + 1:
+            raise Exception("DTM configurations are wrong, channels length must be equal to kernels length + 1")
         if len(self.conf_lc['channels']) != len(self.conf_lc['kernels']) + 1:
             raise Exception("LC configurations are wrong, channels length must be equal to kernels length + 1")
         if len(self.conf_sau['channels']) != len(self.conf_sau['kernels']) + 1: 
@@ -57,8 +57,8 @@ class Middle_fusion_en(nn.Module):
                 self.conv[source] = ConvBlock_mf(self.conf_hs)
             elif source == 'sar':
                 self.conv[source] = ConvBlock_mf(self.conf_sar)
-            elif source == 'dem':
-                self.conv[source] = ConvBlock_mf(self.conf_dem)
+            elif source == 'dtm':
+                self.conv[source] = ConvBlock_mf(self.conf_dtm)
             elif source == 'lc':
                 self.conv[source] = ConvBlock_mf(self.conf_lc)
             elif source == 'sau':
@@ -67,8 +67,6 @@ class Middle_fusion_en(nn.Module):
         # # Register the modules properly
         # for source in self.sources:
         #     setattr(self, f'conv_{source}', self.conv[source])
-        
-        
         # for source in self.sources:
         #    config = getattr(self, f'conf_{source}', None)
         #    self.conv[source] = ConvBlock_mf(config)
@@ -95,12 +93,7 @@ class Middle_fusion_en(nn.Module):
 if __name__ == '__main__':
         
 
-#  conf_rgb={'channels':[3,16,32,64], 'kernels':[3,3,3]},
-#  conf_hs={'channels':[182,128,64], 'kernels':[3,3]},
-#  conf_dem={'channels':[1,16,32,64], 'kernels':[3,3,3]},
-#  conf_sar={'channels':[2,16,32,64], 'kernels':[3,3,3]},
-#  conf_lc={'channels':[8,32,64], 'kernels':[3,3]},
-#  conf_sau={'channels':[10,32,64], 'kernels':[3,3]}
+
         import json
         with open('params.json') as f:
             conf = json.load(f)
@@ -108,10 +101,10 @@ if __name__ == '__main__':
         print(model)
         inputa_rgb=torch.randn(1,3,256,256)
         inputa_hs=torch.randn(1,182,256,256)
-        inputa_dem=torch.randn(1,1,256,256)
+        inputa_dtm=torch.randn(1,1,256,256)
         inputa_sar=torch.randn(1,2,256,256)
         inputa_lc=torch.randn(1,8,256,256)
         inputa_sau=torch.randn(1,10,256,256)
-        inputs=[inputa_dem, inputa_sar,inputa_lc,inputa_sau]
+        inputs=[inputa_dtm, inputa_sar,inputa_lc,inputa_sau]
         output=model(inputs)
         print(output.shape)

@@ -8,7 +8,7 @@ import json
 
 with open('params.json', 'r') as f:
      conf= json.load(f)
-    
+# Used only to define the number of classes for one-hot encoding
 
 
 
@@ -36,11 +36,6 @@ class Dataset(data.Dataset):
         # Defines the expected data types (order: inputs then targets)
         self.input_types = list(sources).copy()
         self.target_types = ['ndvi'] 
-        #Adapting source names to file names
-        #TODO has improved, either change the file names or adapt the rest of the code to change everything dem to dtm
-        for i in range(len(self.input_types)):
-            if self.input_types[i] == "dem" :
-                self.input_types[i]="dtm"
 
     def __len__(self):
         return len(self.image_dirs)
@@ -131,7 +126,7 @@ class Dataset(data.Dataset):
 
 
 if __name__ == '__main__':
-    ds= Dataset(root_dir='Sorted_Sources', sources=['rgb', 'hs', 'dem','sar','lc'], split='train',pca=False, trans=None)
+    ds= Dataset(root_dir='Sorted_Sources', sources=['rgb', 'hs', 'dtm','sar','lc'], split='train',pca=False, trans=None)
     data= ds[0]
     print(data[0][4].shape)  # Affiche la forme de la première entrée
     lc= Dataset.onehot(ds,data[0][4])

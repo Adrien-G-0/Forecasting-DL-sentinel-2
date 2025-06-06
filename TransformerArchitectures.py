@@ -24,7 +24,7 @@ class TransformerArchitectures(Base):
         super(TransformerArchitectures, self).__init__(params)
         
         # reorganize sources values
-        source_order = ['rgb', 'hs', 'dem', 'sar','lc','sau']
+        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau']
         ordered_sources = []
         for source in source_order:
             if source in self.conf['sources']:
@@ -40,14 +40,14 @@ class TransformerArchitectures(Base):
                     input_channels = input_channels + 3
                 if source == 'hs':
                     input_channels = input_channels + 182
-                if source =='dem':
+                if source =='dtm':
                     input_channels = input_channels + 1
                 if source == 'sar' :
                     input_channels = input_channels +2
                 if source == 'lc':
-                    input_channels = input_channels +8#self.conf['num_class_lc']  # should be 8
+                    input_channels = input_channels +self.conf['num_class_lc']  # should be 8
                 if source == 'sau':
-                    input_channels = input_channels +10#self.conf['num_class_sau']  # should be 10
+                    input_channels = input_channels +self.conf['num_class_sau']  # should be 10
         
             # define architecture
             self.net=ViTWithDecoder(input_size=self.conf['train_size'][0],
@@ -77,7 +77,21 @@ class TransformerArchitectures(Base):
             in_channels_middle_fusion = np.sum(self.conf['conf_'+source]["channels"][-1] for source in sources)  # last channel of each source 
             
             # define architecture
-            self.net = Unet(in_channels_middle_fusion)
+            self.net = ViTWithDecoder(input_size=self.conf['train_size'][0],
+                                    num_patches=self.conf['num_patches'],
+                                    embed_dim=self.conf['embed_dim'],
+                                    embedding_type=self.conf['embedding_type'],
+                                    dropout=self.conf['dropout'],
+                                    in_channels=in_channels_middle_fusion,
+                                    patch_size=self.conf['patch_size'],
+                                    num_layers=self.conf['num_layers'],
+                                    num_heads=self.conf['num_heads'],
+                                    mlp_ratio=self.conf['mlp_ratio'],
+                                    attention_dropout=self.conf['attention_dropout'],
+                                    drop_path_rate=self.conf['drop_path_rate'],
+                                    norm_layer=nn.LayerNorm,
+                                    activation=self.conf['activation'],
+                                    return_attention=False)
             # Initialization_weight TODO
 
 
@@ -132,8 +146,6 @@ class TransformerArchitectures(Base):
                 x = inp
 
             model_fwd = lambda: model(x)
-            fwd_flops = measure_flops(model, model_fwd)
-            # print("flops:" + str(fwd_flops))
 
             output = self.net(inp)
             
@@ -145,15 +157,15 @@ class TransformerArchitectures(Base):
         # create transformation function
         def transform_inputs(inps):
             # create transformation
-            sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc','sau', 'ndvi']
+            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau', 'ndvi']
             inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
             inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dem, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+            rgb, hs, dtm, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dtm'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
 
 
-            normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
+            normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
             # no normalization for lc and sau because it is onehot encoded
@@ -161,7 +173,7 @@ class TransformerArchitectures(Base):
 
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
             hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
-            dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
+            dtm = (dtm.numpy() - self.loaded_min_dict_before_normalization['dtm']) / (self.loaded_max_dict_before_normalization['dtm'] - self.loaded_min_dict_before_normalization['dtm'])
             sar = (sar.numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
             #no need to normalize the ndvi because it is already between -1 and 1 and lc,sau are onehot encoded
             ndvi = ndvi.numpy()
@@ -170,7 +182,7 @@ class TransformerArchitectures(Base):
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
-            dem = dem.astype(np.float32)
+            dtm = dtm.astype(np.float32)
             sar = sar.astype(np.float32)
             ndvi = ndvi.astype(np.float32)
             lc = lc.astype(np.float32)
@@ -178,14 +190,14 @@ class TransformerArchitectures(Base):
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
-            dem = normalize_dem(image=dem)['image']
+            dtm = normalize_dtm(image=dtm)['image']
             sar = normalize_sar(image=sar)['image']
 
 
             # initialize the transforms
             transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
                                     additional_targets={'hs': 'image',
-                                                        'dem': 'image',
+                                                        'dtm': 'image',
                                                         'sar': 'image',
                                                         'lc': 'image',
                                                         'sau': 'image',
@@ -193,7 +205,7 @@ class TransformerArchitectures(Base):
             # apply the transforms
             sample = transforms(image=rgb,
                                 hs=hs,
-                                dem=dem,
+                                dtm=dtm,
                                 sar=sar,
                                 lc=lc,
                                 sau=sau,
@@ -203,13 +215,13 @@ class TransformerArchitectures(Base):
             # get images
             rgb = sample['image']
             hs = sample['hs']
-            dem = sample['dem']
+            dtm = sample['dtm']
             sar = sample['sar']
             lc= sample['lc']
             sau = sample['sau']
             ndvi = sample['ndvi']
 
-            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
+            outputs_dict = {'rgb': rgb, 'hs': hs, 'dtm': dtm, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
             # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
@@ -225,7 +237,7 @@ class TransformerArchitectures(Base):
 
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
         normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
-        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_dtm = A.Normalize(mean=self.mean_dict['dtm'], std=self.std_dict['dtm'], max_pixel_value=self.max_dict['dtm'])
         normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
 
         transforms_augmentation = A.Compose([A.Resize(*self.conf['input_size']),
@@ -237,7 +249,7 @@ class TransformerArchitectures(Base):
             ToTensorV2()
         ], is_check_shapes=False)
 
-        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+        transforms = normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation
 
         # create transform function
         return self.create_transform_function(transforms)
@@ -248,7 +260,7 @@ class TransformerArchitectures(Base):
         # create transformation
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
         normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
-        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_dtm = A.Normalize(mean=self.mean_dict['dtm'], std=self.std_dict['dtm'], max_pixel_value=self.max_dict['dtm'])
         normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
 
         transforms_augmentation = A.Compose([
@@ -256,7 +268,7 @@ class TransformerArchitectures(Base):
             ToTensorV2()
         ], is_check_shapes=False)
 
-        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+        transforms = normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation
         
         # create transform function
         return self.create_transform_function(transforms)

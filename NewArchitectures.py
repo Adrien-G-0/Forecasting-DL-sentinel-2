@@ -7,9 +7,6 @@ import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import pickle
 from middle_fusion_ import Middle_fusion_en as mf_
-# seed
-# import random
-# from pytorch_lightning import seed_everything
 from pytorch_lightning.utilities import measure_flops
 
 
@@ -20,7 +17,7 @@ class NewArchitectures(Base):
         super(NewArchitectures, self).__init__(params)
         
         # reorganize sources values
-        source_order = ['rgb', 'hs', 'dem', 'sar','lc','sau']
+        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau']
         ordered_sources = []
         for source in source_order:
             if source in self.conf['sources']:
@@ -36,7 +33,7 @@ class NewArchitectures(Base):
                     input_channels = input_channels + 3
                 if source == 'hs':
                     input_channels = input_channels + 182
-                if source =='dem':
+                if source =='dtm':
                     input_channels = input_channels + 1
                 if source == 'sar' :
                     input_channels = input_channels +2
@@ -126,15 +123,15 @@ class NewArchitectures(Base):
         # create transformation function
         def transform_inputs(inps):
             # create transformation
-            sources_possibles = ['rgb', 'hs', 'dem', 'sar','lc','sau', 'ndvi']
+            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau', 'ndvi']
             inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
             inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dem, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dem'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+            rgb, hs, dtm, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dtm'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
 
 
-            normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation = transform_list
+            normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
             # no normalization for lc and sau because it is onehot encoded
@@ -142,7 +139,7 @@ class NewArchitectures(Base):
 
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
             hs = (hs.numpy() - self.loaded_min_dict_before_normalization['hs']) / (self.loaded_max_dict_before_normalization['hs'] - self.loaded_min_dict_before_normalization['hs'])
-            dem = (dem.numpy() - self.loaded_min_dict_before_normalization['dem']) / (self.loaded_max_dict_before_normalization['dem'] - self.loaded_min_dict_before_normalization['dem'])
+            dtm = (dtm.numpy() - self.loaded_min_dict_before_normalization['dtm']) / (self.loaded_max_dict_before_normalization['dtm'] - self.loaded_min_dict_before_normalization['dtm'])
             sar = (sar.numpy() - self.loaded_min_dict_before_normalization['sar']) / (self.loaded_max_dict_before_normalization['sar'] - self.loaded_min_dict_before_normalization['sar'])
             #no need to normalize the ndvi because it is already between -1 and 1 and lc,sau are onehot encoded
             ndvi = ndvi.numpy()
@@ -151,7 +148,7 @@ class NewArchitectures(Base):
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
-            dem = dem.astype(np.float32)
+            dtm = dtm.astype(np.float32)
             sar = sar.astype(np.float32)
             ndvi = ndvi.astype(np.float32)
             lc = lc.astype(np.float32)
@@ -159,14 +156,14 @@ class NewArchitectures(Base):
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
-            dem = normalize_dem(image=dem)['image']
+            dtm = normalize_dtm(image=dtm)['image']
             sar = normalize_sar(image=sar)['image']
 
 
             # initialize the transforms
             transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
                                     additional_targets={'hs': 'image',
-                                                        'dem': 'image',
+                                                        'dtm': 'image',
                                                         'sar': 'image',
                                                         'lc': 'image',
                                                         'sau': 'image',
@@ -174,7 +171,7 @@ class NewArchitectures(Base):
             # apply the transforms
             sample = transforms(image=rgb,
                                 hs=hs,
-                                dem=dem,
+                                dtm=dtm,
                                 sar=sar,
                                 lc=lc,
                                 sau=sau,
@@ -184,13 +181,13 @@ class NewArchitectures(Base):
             # get images
             rgb = sample['image']
             hs = sample['hs']
-            dem = sample['dem']
+            dtm = sample['dtm']
             sar = sample['sar']
             lc= sample['lc']
             sau = sample['sau']
             ndvi = sample['ndvi']
 
-            outputs_dict = {'rgb': rgb, 'hs': hs, 'dem': dem, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
+            outputs_dict = {'rgb': rgb, 'hs': hs, 'dtm': dtm, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
             # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
@@ -206,7 +203,7 @@ class NewArchitectures(Base):
 
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
         normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
-        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_dtm = A.Normalize(mean=self.mean_dict['dtm'], std=self.std_dict['dtm'], max_pixel_value=self.max_dict['dtm'])
         normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
 
         transforms_augmentation = A.Compose([A.Resize(*self.conf['input_size']),
@@ -218,7 +215,7 @@ class NewArchitectures(Base):
             ToTensorV2()
         ], is_check_shapes=False)
 
-        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+        transforms = normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation
 
         # create transform function
         return self.create_transform_function(transforms)
@@ -229,7 +226,7 @@ class NewArchitectures(Base):
         # create transformation
         normalize_rgb = A.Normalize(mean=self.mean_dict['rgb'], std=self.std_dict['rgb'], max_pixel_value=self.max_dict['rgb'])
         normalize_hs = A.Normalize(mean=self.mean_dict['hs'], std=self.std_dict['hs'], max_pixel_value=self.max_dict['hs'])
-        normalize_dem = A.Normalize(mean=self.mean_dict['dem'], std=self.std_dict['dem'], max_pixel_value=self.max_dict['dem'])
+        normalize_dtm = A.Normalize(mean=self.mean_dict['dtm'], std=self.std_dict['dtm'], max_pixel_value=self.max_dict['dtm'])
         normalize_sar = A.Normalize(mean=self.mean_dict['sar'], std=self.std_dict['sar'], max_pixel_value=self.max_dict['sar'])
 
         transforms_augmentation = A.Compose([
@@ -237,7 +234,7 @@ class NewArchitectures(Base):
             ToTensorV2()
         ], is_check_shapes=False)
 
-        transforms = normalize_rgb, normalize_hs, normalize_dem, normalize_sar, transforms_augmentation
+        transforms = normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation
         
         # create transform function
         return self.create_transform_function(transforms)
@@ -338,22 +335,11 @@ def count_parameters(model):
 
 
 if __name__ == '__main__':
-    # # train or test
-    # seed = 42
-    # random.seed(seed)
-    # torch.manual_seed(seed)
-    # np.random.seed(seed)
-    # seed_everything(seed, workers=True)
-    # torch.backends.cudnn.deterministic = True
 
-    # Base.main(NewArchitectures)
-
-
-    model = NewArchitectures.load_from_checkpoint("checkpoints/early_fusion_sar/version_0/checkpoints/last.ckpt")
-    dl = model.test_dataloader()
-    dataiter = iter(dl)
-    try:
-        first_batch = next(dataiter)
-        print("Premier batch chargé avec succès")
-    except Exception as e:
-        print(f"Erreur lors du chargement du premier batch: {e}")
+    import pytorch_lightning as pl
+    import json
+    with open('params.json') as f:
+        conf = json.load(f)
+    model = NewArchitectures(conf)
+    trainer=pl.Trainer(fast_dev_run=True)
+    trainer.fit(model)

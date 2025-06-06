@@ -1,35 +1,46 @@
 {
+  "experiment_name": "",
+  "sources": [],
+  "method": "",
+  "n_epochs": 100,
+  "batch_size": 8,
+  "num_workers": 7,
+  "learning_rate": 0.0001,
+  "weight_decay": 0,
+  "gradient_clipping": 0.5,
+  "pca": true,
+  "input_size": [256, 352],
+  "train_size": [256, 256],
+  "num_class_lc": 8,
+  "num_class_sau": 10,
+  "root_dir": "",
+  "conf_rgb": {
+      "channels": [3, 16],
+      "kernels": [3]
+  },
+  "conf_hs": {
+      "channels": [182, 128, 64, 32],
+      "kernels": [3, 3, 3]
+  },
+  "conf_dtm": {
+      "channels": [1, 8, 16],
+      "kernels": [3, 3]
+  },
+  "conf_sar": {
+      "channels": [2, 8, 16],
+      "kernels": [3, 3]
+  },
+  "conf_lc": {
+      "channels": [8, 16],
+      "kernels": [3]
+  },
+  "conf_sau": {
+      "channels": [10, 16],
+      "kernels": [3]
+  },
   "mean_dict_01": "",
   "std_dict_01": "",
   "max_dict_01": "",
   "max_dict": "",
-  "min_dict": "",
-  "experiment_name": "NewArchitectures",
-  "n_epochs": 3,
-  "batch_size": 3,
-  "num_workers": 7,
-  "pca": true,
-  "n_classes_lc": 8,
-  "n_classes_sau": 10,
-  "input_size": [
-    256,
-    352
-  ],
-  "train_size": [
-    256,
-    256
-  ],
-  "learning_rate": 1e-4,
-  "weight_decay": 0,
-  "gradient_clipping": 0.5,
-  "method": "",
-  "sources": [],
-  "root_dir": "",
-  
-  "conf_rgb":{"channels":[3,16,32], "kernels":[3,3]},
-  "conf_hs":{"channels":[182,128,64,32], "kernels":[3,3,3]},
-  "conf_dem":{"channels":[1,8,32], "kernels":[3,3]},
-  "conf_sar":{"channels":[2,8,16,32], "kernels":[3,3,3]},
-  "conf_lc":{"channels":[8,16,32], "kernels":[3,3]},
-  "conf_sau":{"channels":[10,16,32], "kernels":[3,3]}
+  "min_dict": ""
 }
