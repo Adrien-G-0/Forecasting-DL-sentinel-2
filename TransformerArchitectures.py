@@ -8,7 +8,6 @@ import time
 import pickle
 import numpy as np
 
-from albumentations.pytorch import ToTensorV2
 from albumentations.pytorch.transforms import ToTensorV2
 import albumentations as A
 
@@ -16,6 +15,13 @@ from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
 from transformers import ViTConfig, ViTModel
 from NewBase import Base
 from middle_fusion_ import Middle_fusion_en as mf_
+import pytorch_lightning as pl
+
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
+from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
+from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import RichProgressBar
 
 
 class TransformerArchitectures(Base):
@@ -57,7 +63,7 @@ class TransformerArchitectures(Base):
                                     dropout=self.conf['dropout'],
                                     in_channels=input_channels,
                                     patch_size=self.conf['patch_size'],
-                                    num_layers=self.conf['num_layers'],
+                                    num_layers_transformers=self.conf['num_layers_transformers'],
                                     num_heads=self.conf['num_heads'],
                                     mlp_ratio=self.conf['mlp_ratio'],
                                     attention_dropout=self.conf['attention_dropout'],
@@ -130,8 +136,7 @@ class TransformerArchitectures(Base):
                 x = inp
 
             model_fwd = lambda: model(x)
-            fwd_flops = measure_flops(model, model_fwd)
-            # print("flops:" + str(fwd_flops))
+
             output = self.net(inp)
             return output
         
@@ -279,20 +284,6 @@ class TransformerArchitectures(Base):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class PositionalEmbedding(nn.Module):
     """
     Positional Embedding pour Vision Transformer (ViT)
@@ -318,7 +309,7 @@ class PositionalEmbedding(nn.Module):
         self.embedding_type = embedding_type
         
         
-        # Nombre total de positions (patches + éventuellement CLS token)
+        # Nombre total de positions (patches )
         self.num_positions = num_patches 
         
         if embedding_type == 'learnable':
@@ -546,7 +537,6 @@ class FeedForward(nn.Module):
         return x
 
 
-
 class TransformerBlock(nn.Module):
     """
     Bloc Transformer avec auto-attention et feed-forward
@@ -650,9 +640,10 @@ class TransformerEncoder(nn.Module):
             attention_weights: Liste des poids d'attention si return_attention=True
         """
         attention_weights = []
-        
+        list_residuals = []
         for block in self.blocks:
             x, attn_weights = block(x, mask)
+            list_residuals.append(x) #saving residuals for skip_connections
             if self.return_attention:
                 attention_weights.append(attn_weights)
         
@@ -661,7 +652,7 @@ class TransformerEncoder(nn.Module):
         if self.return_attention:
             return x, attention_weights
         else:
-            return x
+            return x , list_residuals
     
     def get_attention_maps(self, x, layer_idx=None):
         """
@@ -694,7 +685,6 @@ class TransformerDecoder(nn.Module):
             x = layer(x)
         return x
 
-
 class ConvBlock(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -711,6 +701,8 @@ class ConvBlock(torch.nn.Module):
 class UpsamplingBlock(torch.nn.Module):
         def __init__(self, in_channels, out_channels):
             super(UpsamplingBlock, self).__init__()
+            self.in_channels = in_channels
+            self.out_channels = out_channels
             self.upsample = torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
             self.conv_block1 = ConvBlock(in_channels, in_channels)
             self.conv_block2 = ConvBlock(in_channels, out_channels)
@@ -739,11 +731,11 @@ class CNNDecoder(nn.Module):
                 UpsamplingBlock(in_channels, out_channels)
             )
             in_channels = out_channels
-        self.final_conv = UpsamplingBlock(in_channels, 1)
+        self.upsampling_blocks.append(UpsamplingBlock(in_channels, 1))
 
         self.activation = nn.Sigmoid()  # Activation pour la sortie finale
 
-    def forward(self, x):
+    def forward(self, x,skip_residuals):
         """
         Args:
             x: [batch_size, num_patches, embed_dim]
@@ -760,15 +752,170 @@ class CNNDecoder(nn.Module):
         # Permuter les dimensions pour CNN
         x = x.permute(0, 3, 1, 2)
         # Passer à travers les blocs d'upsampling
-        for block in self.upsampling_blocks:
+
+        for i,block in enumerate(self.upsampling_blocks):
+            if i+len(skip_residuals) > self.num_layers:
+                # add skip_connection
+                x = x + skip_residuals[i+len(skip_residuals)-self.num_layers]
             x = block(x)
-        # Passer à travers la couche finale
-        x = self.final_conv(x)
+
+
         x= 2*self.activation(x) -1 # Appliquer l'activation finale
         # Retourner la sortie finale
         return x
 
+
+class ReversePatchEmbedding(nn.Module):
+    def __init__(self, out_img_size: int, out_channels: int, embed_dim: int, patch_size: int=16):
+        super().__init__()
+        self.out_img_size = out_img_size
+        self.patch_size = patch_size
+        self.n_patches = (out_img_size // patch_size) ** 2
+        self.embed_dim = embed_dim
+
+        # Convolution transposée pour reconstruire l'image
+        self.reverse_projection = nn.ConvTranspose2d(
+            embed_dim, out_channels,
+            kernel_size=out_img_size//patch_size,
+            stride=out_img_size//patch_size,
+            dilation=1
+            
+        )
+       
+    def forward(self, x):
+        # x shape: (batch_size, num_patches, embed_dim)
         
+        batch_size, num_patches,embed_dim = x.shape
+
+        # Réorganiser les patches en une grille 2D
+        x = x.view(batch_size, int(num_patches**0.5), int(num_patches**0.5), embed_dim)
+        x = x.permute(0, 3, 1, 2)  # x shape: (batch_size, embed_dim, out_img_size//patch_size, out_img_size//patch_size)
+
+        # Appliquer la convolution transposée pour obtenir l'image finale
+        x = self.reverse_projection(x)  # x shape: (batch_size, out_channels, out_img_size, out_img_size)
+
+        return x
+
+
+class Skip_Connection(nn.Module):
+    def __init__(self, num_skip_connection, embed_dim, list_in_channels,patch_size=16, out_img_size=128):
+        super().__init__()
+        assert len(list_in_channels) == num_skip_connection, "list_in_channels must match num_layers"
+        self.num_layers = num_skip_connection
+        self.list_in_channels = list_in_channels
+        self.reverse_embedding = nn.ModuleList([ ReversePatchEmbedding(out_img_size= int(out_img_size* 2**(-num_skip_connection+k+1)),
+                                                                   out_channels=list_in_channels[-k-1],
+                                                                   embed_dim=embed_dim,
+                                                                   patch_size=patch_size
+                                                        )   for k in range(num_skip_connection)])
+
+    def forward(self, list_residuals):
+        """
+        Args:
+            x: [batch_size, patch_size, patch_size, embed_dim] ordered by deepth of creation, the first element comes from the first layer and therefore use last in the decoder
+
+        Returns:
+            list_outputs: list of the residuals ordered by deepth of use, the first element comes from the last layer and therefore use first in the decoder
+        
+        """
+        assert len(list_residuals) == self.num_layers, "list_residuals must match num_layers"
+        # The first residual is used for the last layer of the decoder, so it is used through the last skipped connection
+        list_outputs = []
+        for res,skip_connection in zip(list_residuals, self.reverse_embedding):
+            x = skip_connection(res)
+            list_outputs.append(x)
+        return list_outputs
+
+# #New test
+# class ViTWithDecoder2(nn.Module):
+#     def __init__(self, 
+#                  input_size,
+#                  num_patches, 
+#                  embed_dim, 
+#                  embedding_type='learnable',
+#                  dropout=0.1,
+#                  in_channels=2, 
+#                  patch_size:int=16,                 
+#                  num_layers=4,
+#                  num_heads=8,
+#                  mlp_ratio=4.0,
+#                  attention_dropout=0.1,
+#                  drop_path_rate=0.0,
+#                  norm_layer=nn.LayerNorm,
+#                  activation='gelu',
+#                  return_attention=False):
+#         super().__init__()
+#         self.patch_embedding_class = PatchEmbedding(img_size=input_size,
+#                                               in_channels=18,
+#                                               embed_dim=embed_dim//2,
+#                                               patch_size=patch_size)
+        
+#         self.patch_embedding_continuous = PatchEmbedding(img_size=input_size,
+#                                               in_channels=2,
+#                                               embed_dim=embed_dim-embed_dim//2,
+#                                               patch_size=patch_size)
+        
+#         self.positional_embedding = PositionalEmbedding(num_patches=num_patches,
+#                                                         embed_dim=embed_dim,
+#                                                         embedding_type=embedding_type,
+#                                                         dropout=dropout)
+        
+#         self.Tclass=TransformerEncoder(embed_dim=embed_dim//2,
+#                                           num_layers=2,
+#                                           num_heads=num_heads,
+#                                           mlp_ratio=mlp_ratio,
+#                                           dropout=attention_dropout,
+#                                           drop_path_rate=drop_path_rate,
+#                                           norm_layer=norm_layer,
+#                                           activation=activation,
+#                                           return_attention=return_attention)
+        
+#         self.Tcontinuous=TransformerEncoder(embed_dim=embed_dim-embed_dim//2,
+#                                             num_layers=2,
+#                                             num_heads=num_heads,
+#                                             mlp_ratio=mlp_ratio,
+#                                             dropout=attention_dropout,
+#                                             drop_path_rate=drop_path_rate,
+#                                             norm_layer=norm_layer,
+#                                             activation=activation,
+#                                             return_attention=return_attention)
+
+#         self.encoder = TransformerEncoder(embed_dim=embed_dim,
+#                                           num_layers=num_layers-2,
+#                                           num_heads=num_heads,
+#                                           mlp_ratio=mlp_ratio,
+#                                           dropout=attention_dropout,
+#                                           drop_path_rate=drop_path_rate,
+#                                           norm_layer=norm_layer,
+#                                           activation=activation,
+#                                           return_attention=return_attention)
+        
+
+#         self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        
+#         # self.pseudo_skip_connection = ConvBlock(in_channels=in_channels, out_channels=1)
+
+#     def forward(self, x):
+#         x_class = x[:,2:]
+#         x_continuous = x[:,:2]
+#         x_class_emb = self.patch_embedding_class(x_class)
+#         x_continuous_emb = self.patch_embedding_continuous(x_continuous)
+
+#         x_emb= torch.cat([x_continuous_emb,x_class_emb], dim=-1)  # Concaténer les embeddings
+#         x_emb_pe = self.positional_embedding(x_emb)
+
+#         x_encoded_class = self.Tclass(x_emb_pe[:,-2:])  # Exclure les tokens de classe
+#         x_encoded_continuous = self.Tcontinuous(x_emb_pe[:,:-2])  # Exclure les tokens de classe
+
+#         x_encoded = torch.cat([x_encoded_continuous, x_encoded_class], dim=-1)  # Concaténer les sorties encodées
+#         x_encoded = self.encoder(x_emb_pe)
+
+#         # x_emb = self.patch_embedding(x)
+#         # x_emb_pe = self.positional_embedding(x_emb)
+        
+#         # x_encoded = self.encoder(x_emb_pe)
+#         output = self.decoder(x_encoded) #self.pseudo_skip_connection(x) +
+#         return output 
 
 class ViTWithDecoder(nn.Module):
     def __init__(self, 
@@ -779,7 +926,7 @@ class ViTWithDecoder(nn.Module):
                  dropout=0.1,
                  in_channels=2, 
                  patch_size:int=16,                 
-                 num_layers=4,
+                 num_layers_transformers=4,
                  num_heads=8,
                  mlp_ratio=4.0,
                  attention_dropout=0.1,
@@ -799,7 +946,7 @@ class ViTWithDecoder(nn.Module):
                                                         dropout=dropout)
         
         self.encoder = TransformerEncoder(embed_dim=embed_dim,
-                                          num_layers=num_layers,
+                                          num_layers=num_layers_transformers,
                                           num_heads=num_heads,
                                           mlp_ratio=mlp_ratio,
                                           dropout=attention_dropout,
@@ -807,16 +954,27 @@ class ViTWithDecoder(nn.Module):
                                           norm_layer=norm_layer,
                                           activation=activation,
                                           return_attention=return_attention)
-        
-
+                
         self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        
+        self.num_skip_connection = min(self.decoder.num_layers, num_layers_transformers)  # Limiter le nombre de connexions résiduelles
+        self.pseudo_skip_connection = Skip_Connection(num_skip_connection=self.num_skip_connection,
+                                                      embed_dim=embed_dim,
+                                                      patch_size=patch_size,
+                                                      out_img_size=input_size/2,
+                                                      list_in_channels=[self.decoder.upsampling_blocks[-k-1].in_channels for k in range(self.num_skip_connection)]
+                                                      )
+        # mx num of skip connection is the minimum of both num of layers.
+        # pseudo skip connectin
 
     def forward(self, x):
-        x = self.patch_embedding(x)
-        x = self.positional_embedding(x)
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        x_emb = self.patch_embedding(x)
+        x_emb_pe = self.positional_embedding(x_emb)
+        x_encoded,list_residuals = self.encoder(x_emb_pe)
+        list_residuals = list_residuals[:self.num_skip_connection]  # Prendre les premiers résidus pour les connexions résiduelles
+        skip_residuals = self.pseudo_skip_connection(list_residuals)  # Appliquer les connexions résiduelles
+        output = self.decoder(x_encoded,skip_residuals) 
+        return output
 
 
 

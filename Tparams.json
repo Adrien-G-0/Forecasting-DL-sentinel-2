@@ -1,33 +1,40 @@
 {
-    "mean_dict_01": "Sources/dict_stats/mean_dict_01.pkl",
-    "std_dict_01": "Sources/dict_stats/std_dict_01.pkl",
-    "max_dict_01": "Sources/dict_stats/max_dict_01.pkl",
-    "max_dict": "Sources/dict_stats/max_dict.pkl",
-    "min_dict": "Sources/dict_stats/min_dict.pkl",
-    "experiment_name": "02_06/",
+    "experiment_name": "09_06/T",
     "n_epochs": 100,
     "batch_size": 8,
-    "num_workers": 7,
+    "num_workers": 8,
+    "learning_rate": 0.0001,
+    "weight_decay": 0,
+    "gradient_clipping": 0.5,
     "pca": true,
-    "num_class_lc": 8,
-    "num_class_sau": 10,
+    "method": "early_fusion",
     "input_size": [
         256,
-        352
+        256
     ],
     "train_size": [
         256,
         256
     ],
-    "learning_rate": 0.0001,
-    "weight_decay": 0,
-    "gradient_clipping": 0.5,
-    "method": "middle_fusion",
+    "num_class_lc": 8,
+    "num_class_sau": 10,
     "sources": [
         "sar",
+        "lc",
         "sau"
     ],
     "root_dir": "Sorted_Sources",
+    "num_patches": 256,
+    "embed_dim": 600,
+    "embedding_type": "sinusoidal",
+    "dropout": 0.2,
+    "patch_size": 16,
+    "num_layers_transformers": 4,
+    "num_heads": 12,
+    "mlp_ratio": 4,
+    "attention_dropout": 0.1,
+    "drop_path_rate": 0.0,
+    "activation": "gelu",
     "conf_rgb": {
         "channels": [
             3,
@@ -90,15 +97,9 @@
             3
         ]
     },
-    "num_patches": 16,
-    "embed_dim": 768,
-    "embedding_type": "sinusoidal",
-    "dropout": 0.1,
-    "patch_size": 16,
-    "num_layers": 4,
-    "num_heads": 12,
-    "mlp_ratio": 4,
-    "attention_dropout": 0.1,
-    "drop_path_rate": 0.0,
-    "activation": "gelu"
+    "mean_dict_01": "Sources/dict_stats/mean_dict_01.pkl",
+    "std_dict_01": "Sources/dict_stats/std_dict_01.pkl",
+    "max_dict_01": "Sources/dict_stats/max_dict_01.pkl",
+    "max_dict": "Sources/dict_stats/max_dict.pkl",
+    "min_dict": "Sources/dict_stats/min_dict.pkl"
 }
