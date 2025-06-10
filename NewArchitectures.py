@@ -6,7 +6,8 @@ from NewBase import Base
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import pickle
-from middle_fusion_ import Middle_fusion_en as mf_
+from middle_fusion import Middle_fusion_en as mf_
+from late_fusion import LateFusion as lf_
 from pytorch_lightning.utilities import measure_flops
 
 
@@ -57,7 +58,10 @@ class NewArchitectures(Base):
             # define architecture
             self.net = Unet(in_channels_middle_fusion)
             # Initialization_weight TODO
-
+        
+        elif self.conf['method'] == 'late_fusion':
+            self.net = lf_(self.conf)
+            
 
         self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
         self.std_dict = self.load_dict(self.conf['std_dict_01'])
@@ -116,6 +120,18 @@ class NewArchitectures(Base):
             output = self.net(inp)
             
             return output     
+        elif self.conf['method'] == 'late_fusion':
+
+            with torch.device("meta"):
+                model = self.net
+                x = batch
+
+            model_fwd = lambda: model(x)
+            fwd_flops = measure_flops(model, model_fwd)
+            # print("flops:" + str(fwd_flops))
+
+            output = self.net(batch)
+            return output
 
 
 
@@ -340,6 +356,9 @@ if __name__ == '__main__':
     import json
     with open('params.json') as f:
         conf = json.load(f)
-    model = NewArchitectures(conf)
+    model = NewArchitectures(conf).to('cuda')
+    model = model.to('cuda')
+    for param in model.parameters():
+        param.data = param.data.to('cuda')
     trainer=pl.Trainer(fast_dev_run=True)
     trainer.fit(model)

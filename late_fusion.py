@@ -50,16 +50,21 @@ class UpsamplingBlock(torch.nn.Module):
 class LateFusionEncoder(nn.Module):
     def __init__(self, conf):
         super().__init__()
-        self.sources=conf["sources"]
-        self.dict_module={}
+        self.sources = conf["sources"]
+        self.dict_module = nn.ModuleDict()
 
         for source in self.sources:
-            input_channels=conf["conf_"+source]['channels'][0]
+            # Vérifiez que la clé de configuration existe
+            key = "conf_" + source
+            if key not in conf:
+                raise KeyError(f"Configuration for source {source} not found in conf")
+
+            input_channels = conf[key]['channels'][0]
             self.dict_module[source] = nn.ModuleList([
-                EncoderBlock(input_channels, 2*input_channels),
-                EncoderBlock(2*input_channels, 4*input_channels),
-                EncoderBlock(4*input_channels, 8*input_channels),
-                EncoderBlock(8*input_channels, 16*input_channels)
+                EncoderBlock(input_channels, 2 * input_channels),
+                EncoderBlock(2 * input_channels, 4 * input_channels),
+                EncoderBlock(4 * input_channels, 8 * input_channels),
+                EncoderBlock(8 * input_channels, 16 * input_channels)
             ])
 
     def forward(self, inputs):
@@ -67,21 +72,21 @@ class LateFusionEncoder(nn.Module):
         Residual are returned in by deepth of creation, the first element is from the first layer
         '''
         if len(inputs) != len(self.sources):
-            raise Exception(f"Expected {len(self.sources)} inputs, got {len(inputs)}")
-        
-        dict_residual={}
-        for i,source in enumerate(self.sources):
-            dict_residual[source] = []
-            inp=inputs[i]
-            dict_residual[source]=[]
+            raise ValueError(f"Expected {len(self.sources)} inputs, got {len(inputs)}")
+
+        dict_residual = {}
+        for i, source in enumerate(self.sources):
+            dict_residual[source] = []  
+            inp = inputs[i]
             for module in self.dict_module[source]:
                 inp, residual = module(inp)
                 dict_residual[source].append(residual)
-            
-        # Concatenate the residuals from all sources
-        skip_connections = [torch.cat([dict_residual[source][i] for source in self.sources], dim=1) 
-            for i in range(len(dict_residual[self.sources[0]]))]
 
+        # Concaténer les résidus de toutes les sources
+        skip_connections = [
+            torch.cat([dict_residual[source][i] for source in self.sources], dim=1)
+            for i in range(len(dict_residual[self.sources[0]]))
+        ]
 
         return skip_connections
 
