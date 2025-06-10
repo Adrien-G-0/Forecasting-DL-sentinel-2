@@ -10,7 +10,7 @@ pandas
 rasterio
 segmentation_models_pytorch
 albumentations==2.0.5
-pytorch_lightning
+
 gdal==3.8.4
 rich 
 tensorBoard

@@ -1,6 +1,5 @@
 import torch
-from torch import nn, optim, functional as F
-from torch.nn import Sequential
+from torch import nn
 import numpy as np
 
 class ConvBlock(torch.nn.Module):
@@ -52,12 +51,10 @@ class LateFusionEncoder(nn.Module):
     def __init__(self, conf):
         super().__init__()
         self.sources=conf["sources"]
-        self.dict_residual={}
         self.dict_module={}
-        self.skip_connections=[]
 
         for source in self.sources:
-            input_channels=conf[f"conv_{source}"]['channels'][0]
+            input_channels=conf["conf_"+source]['channels'][0]
             self.dict_module[source] = nn.ModuleList([
                 EncoderBlock(input_channels, 2*input_channels),
                 EncoderBlock(2*input_channels, 4*input_channels),
@@ -66,22 +63,27 @@ class LateFusionEncoder(nn.Module):
             ])
 
     def forward(self, inputs):
+        '''
+        Residual are returned in by deepth of creation, the first element is from the first layer
+        '''
         if len(inputs) != len(self.sources):
             raise Exception(f"Expected {len(self.sources)} inputs, got {len(inputs)}")
         
-        for source in self.sources:
-            self.dict_residual[source] = []
-            inp=inputs[source]
+        dict_residual={}
+        for i,source in enumerate(self.sources):
+            dict_residual[source] = []
+            inp=inputs[i]
+            dict_residual[source]=[]
             for module in self.dict_module[source]:
                 inp, residual = module(inp)
-                self.dict_residual[source].append(residual)
+                dict_residual[source].append(residual)
             
         # Concatenate the residuals from all sources
-        self.skip_connections = [torch.cat([self.dict_residual[source][i] for source in self.sources], dim=1) 
-            for i in range(len(self.dict_residual[self.sources[0]]))]
+        skip_connections = [torch.cat([dict_residual[source][i] for source in self.sources], dim=1) 
+            for i in range(len(dict_residual[self.sources[0]]))]
 
 
-        return self.skip_connections
+        return skip_connections
 
 
 
@@ -89,25 +91,24 @@ class LateFusionDecoder(nn.Module):
     def __init__(self,conf):
         super().__init__()
         self.sources = conf["sources"]
-        self.input_channels = np.sum([conf[f"{source}"]["channels"][0] for source in self.sources]) *2**4  # Assuming the input channels are doubled at each stage
+        self.input_channels = np.sum([conf["conf_"+source]["channels"][0] for source in self.sources]) *2**4  # Assuming the input channels are doubled at each stage
 
         self.upsampling_list = nn.ModuleList([
-            UpsamplingBlock(0, self.input_channels // 2,self.input_channels),
+            UpsamplingBlock(self.input_channels, self.input_channels // 2,self.input_channels),
             UpsamplingBlock(self.input_channels // 2, self.input_channels // 4,self.input_channels // 2),
             UpsamplingBlock(self.input_channels // 4, self.input_channels // 8,self.input_channels // 4),
             UpsamplingBlock(self.input_channels // 8, 1,self.input_channels // 8)
         ])
 
     def forward(self, list_residuals):
+        list_residuals = list(reversed(list_residuals))  # Reverse the order of residuals to start from the last layer
         x=torch.zeros_like(list_residuals[0])
+        x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
         for res,decoder in zip(list_residuals,self.upsampling_list):
             x = decoder(x, res)
         outputs = x
             
         return outputs
-
-
-
 
 
 
@@ -128,3 +129,15 @@ class LateFusion(nn.Module):
         output= 2* self.activation(outputs)-1
 
         return output
+    
+
+
+if __name__ == '__main__':
+    import json
+    with open('params.json') as f:
+        conf = json.load(f)
+    sources = ["dtm","sar","lc"]
+    conf['sources'] = sources
+    model = LateFusion(conf)
+    inputs = [torch.randn(1, conf["conf_"+source]['channels'][0], 256, 256) for source in sources]
+    outputs = model(inputs)
