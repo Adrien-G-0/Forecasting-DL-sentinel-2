@@ -13,6 +13,7 @@
   "train_size": [256, 256],
   "num_class_lc": 8,
   "num_class_sau": 10,
+  "num_class_esa":10,
   "root_dir": "",
   "conf_rgb": {
       "channels": [3, 16],
@@ -38,6 +39,10 @@
       "channels": [10, 16],
       "kernels": [3]
   },
+  "conf_esa": {
+        "channels": [10,16],
+        "kernels": [3]
+    },
   "mean_dict_01": "",
   "std_dict_01": "",
   "max_dict_01": "",

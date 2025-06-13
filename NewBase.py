@@ -15,6 +15,8 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import torchmetrics
 import argparse,json
+import matplotlib.pyplot as plt
+import weightwatcher as ww
 
 
 
@@ -60,8 +62,9 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
         
         loss = F.l1_loss(predictions, targets)
+        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
         
-        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
+        self.log("train_loss", masked_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
         
         return loss
 
@@ -71,7 +74,10 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
 
         loss = F.l1_loss(predictions, targets)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
+        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
+
+
+        self.log("val_loss", masked_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
 
         # Update each metrics
         self.metrics['mae'].update(predictions, targets)
@@ -83,9 +89,6 @@ class Base(pl.LightningModule):
         predictions_flat = predictions.view(-1)  
         targets_flat = targets.view(-1)        
          
-        if batch_idx % 30 == 0:  # Enregistrer seulement pour le premier batch
-            self.logger.experiment.add_images('val_targets', targets, batch_idx)   
-            self.logger.experiment.add_images('val_predictions', predictions, batch_idx)  
 
         # avoid warning when variance is too low
         if predictions_flat.var() > 1e-3 :
@@ -113,6 +116,12 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
 
         # Update metrics as in validation step
+        loss = F.l1_loss(predictions, targets)
+        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
+
+
+        self.log("test_loss", masked_loss, on_step=False, on_epoch=False, prog_bar=False, batch_size=self.conf['batch_size'])
+
         
         self.metrics_test['mae'].update(predictions, targets)
         self.metrics_test['mse'].update(predictions, targets)
@@ -123,8 +132,10 @@ class Base(pl.LightningModule):
         targets_flat = targets.view(-1)   
 
         if batch_idx in [0,20]:  # Enregistrer seulement pour le premier batch
+
+            # self.logger.experiment.add_images('test_inputs', torch.cat(inputs,dim=1), batch_idx)   
             self.logger.experiment.add_images('test_targets', targets, batch_idx)   
-            self.logger.experiment.add_images('test_predictions', predictions, batch_idx)  
+            self.logger.experiment.add_images('test_predictions', predictions, batch_idx)             
 
         # distribution of loss per image
         loss=  F.l1_loss(predictions, targets, reduction='none')  

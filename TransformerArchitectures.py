@@ -14,7 +14,7 @@ import albumentations as A
 from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
 from transformers import ViTConfig, ViTModel
 from NewBase import Base
-from middle_fusion_ import Middle_fusion_en as mf_
+from middle_fusion import Middle_fusion_en as mf_
 import pytorch_lightning as pl
 
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
@@ -282,8 +282,6 @@ class TransformerArchitectures(Base):
         return self.val_transforms()
 
 
-
-
 class PositionalEmbedding(nn.Module):
     """
     Positional Embedding pour Vision Transformer (ViT)
@@ -536,6 +534,19 @@ class FeedForward(nn.Module):
         x = self.dropout(x)
         return x
 
+class EncoderBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv_block1 = ConvBlock(in_channels, out_channels)
+        self.conv_block2 = ConvBlock(out_channels, out_channels)
+        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+
+    def forward(self, x):
+        x = self.conv_block1(x)
+        x = self.conv_block2(x)
+        residual = x
+        output = self.pool(x)
+        return output, residual
 
 class TransformerBlock(nn.Module):
     """
@@ -826,6 +837,89 @@ class Skip_Connection(nn.Module):
             list_outputs.append(x)
         return list_outputs
 
+
+
+class Transformerswithdetails(nn.Module):
+    def __init__(self, 
+                 input_size,
+                 num_patches, 
+                 embed_dim, 
+                 embedding_type='learnable',
+                 dropout=0.1,
+                 in_channels=2, 
+                 patch_size:int=16,                 
+                 num_layers_transformers=4,
+                 num_heads=8,
+                 mlp_ratio=4.0,
+                 attention_dropout=0.1,
+                 drop_path_rate=0.0,
+                 norm_layer=nn.LayerNorm,
+                 activation='gelu',
+                 return_attention=False):
+        super().__init__()
+
+        self.patch_embedding = PatchEmbedding(img_size=input_size,
+                                              in_channels=in_channels,
+                                              embed_dim=embed_dim,
+                                              patch_size=patch_size)
+        
+        self.positional_embedding = PositionalEmbedding(num_patches=num_patches,
+                                                        embed_dim=embed_dim,
+                                                        embedding_type=embedding_type,
+                                                        dropout=dropout)
+
+        self.encoder = TransformerEncoder(embed_dim=embed_dim,
+                                          num_layers=num_layers_transformers,
+                                          num_heads=num_heads,
+                                          mlp_ratio=mlp_ratio,
+                                          dropout=attention_dropout,
+                                          drop_path_rate=drop_path_rate,
+                                          norm_layer=norm_layer,
+                                          activation=activation,
+                                          return_attention=return_attention)
+        
+        self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        
+        self.details = calculate_tensor_gradient
+
+        self.encoder1 = EncoderBlock(in_channels, 64)
+        self.encoder2 = EncoderBlock(64, 128)
+        self.encoder3 = EncoderBlock(128, 256)
+        self.encoder4 = EncoderBlock(256, 512)
+
+        def forward(self,x):
+            x_emb = self.patch_embedding(x)
+            x_emb_pe = self.positional_embedding(x_emb)
+            x_encoded,_ = self.encoder(x_emb_pe)
+
+def calculate_tensor_gradient(image_tensor):
+    # Assurez-vous que l'image est en niveaux de gris
+    if image_tensor.dim() == 3 and image_tensor.shape[0] == 3:
+        # Convertir en niveaux de gris en prenant la moyenne des canaux
+        gray_tensor = image_tensor.mean(dim=0, keepdim=True)
+    else:
+        gray_tensor = image_tensor
+
+    # Définir les noyaux de Sobel pour les gradients en x et y
+    sobel_x = torch.tensor([[-1, 0, 1],
+                            [-2, 0, 2],
+                            [-1, 0, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+
+    sobel_y = torch.tensor([[-1, -2, -1],
+                            [0, 0, 0],
+                            [1, 2, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+
+    # Calculer les gradients en x et y
+    grad_x = F.conv2d(gray_tensor, sobel_x, padding=1)
+    grad_y = F.conv2d(gray_tensor, sobel_y, padding=1)
+
+    # Calculer la magnitude du gradient
+    grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
+
+    # Normaliser la magnitude du gradient
+    grad_magnitude = (grad_magnitude - grad_magnitude.min()) / (grad_magnitude.max() - grad_magnitude.min())
+
+    return grad_magnitude
 # #New test
 # class ViTWithDecoder2(nn.Module):
 #     def __init__(self, 
@@ -1047,85 +1141,6 @@ class VisionTransformer(nn.Module):
         return x
 
 
-# img_size=256
-# in_channels=4
-# out_channels=1
-# embed_dim=1024
-# num_heads=8
-# num_layers=4
-# patch_size=16
-# dropout=0.1
-
-
-# model = VisionTransformer(
-#     img_size=img_size,
-#     out_channels=out_channels,
-#     in_channels=in_channels,
-#     embed_dim=embed_dim,
-#     num_heads=num_heads,
-#     num_layers=num_layers,
-#     patch_size=patch_size,
-#     dropout=dropout
-# )
-# print(model)
-
-# input_tensor = torch.randn(1, in_channels, img_size, img_size)  # Example input
-# deb=time.time()
-# output = model(input_tensor)
-# duration=time.time()-deb
-# print("Time taken for forward pass:", duration)
-# print("Output shape:", output.shape)  # Should be (1, 1, patch_size, patch_size)
-
-
-# image_size=256
-# patch_size=16
-# num_channels=4
-# hidden_size=1024
-# intermediate_size=4096
-# num_attention_heads=8
-# num_hidden_layers=8
-# hidden_act="gelu"
-# layer_norm_eps=1e-12
-# dropout_rate=0.1
-
-
-# # class visionTransformer
-# configuration = ViTConfig(
-#     image_size=image_size,
-#     patch_size=patch_size,
-#     num_channels=num_channels,
-#     hidden_size=hidden_size,
-#     intermediate_size=intermediate_size,
-#     num_attention_heads=num_attention_heads,
-#     num_hidden_layers=num_hidden_layers,
-#     hidden_act=hidden_act,
-#     layer_norm_eps=layer_norm_eps,
-#     dropout_rate=dropout_rate,
-# )
-
-# # Randomly initializing a model (with random weights) from the configuration
-
-# model = ViTModel(configuration)
-
-# # Accessing the model configuration
-
-# configuration = model.config
-
-# # class TimeseriesTransformer
-# print(model)
-# input_tensor = torch.randn(1, num_channels, img_size, img_size)  # Example input
-# deb=time.time()
-# output = model(input_tensor)
-# n_patches=(image_size//patch_size)**2
-# patch_representations=output.last_hidden_state[:,1:,:]
-# patch_representations=patch_representations.view(1, n_patches, configuration.hidden_size)
-# lineaire=nn.Linear(1024,256)
-# output_image=lineaire(patch_representations)
-# duration=time.time()-deb
-# print("Time taken for forward pass:", duration)
-# print("Output shape:", output_image.size())  # Should be (1, 1, patch_size, patch_size)
-
-
 
 
 
@@ -1240,7 +1255,7 @@ if __name__ == "__main__":
         output=model(x)
         print(f"Shape d'entrée: {x.shape}")
         print(f"Shape après CNN Decoder: {output.shape}")
-    if True: #test ViT with decoder
+    if False: #test ViT with decoder
         img_size = 256
         in_channels = 10
         out_channels = 1
@@ -1279,7 +1294,148 @@ if __name__ == "__main__":
         print(f"Paramètres : {sum(p.numel() for p in model.parameters())}")
         print(f"Shape d'entrée: {x.shape}")
         print(f"Shape après ViT avec décodeur: {output.shape}")
+    if False: # test de ReversePatchEmbedding
+        out_img_size = 32
+        embed_dim = 1024
+        out_channels = 7
+        patch_size=16
+        num_patches=256
+        test=ReversePatchEmbedding(out_img_size=out_img_size,out_channels=out_channels,embed_dim=embed_dim,patch_size=patch_size)
+        x = torch.randn(1, embed_dim,num_patches)  # Simuler un tensor d'entrée
+        output = test(x)
+        print(f"Shape d'entrée: {x.shape}")
+        print(f"Shape après ReversePatchEmbedding: {output.shape}")  # Devrait être (1, in_channels, img_size, img_size)
 
+    if False : #test de skip connection
+
+    # Paramètres d'exemple
+
+        embed_dim = 1024
+        patch_size=16
+        input_size=256
+        num_patches=256
+        
+        encoder = TransformerEncoder(embed_dim=embed_dim,
+                                          num_layers=4,
+                                          num_heads=2,
+                                          mlp_ratio=2,
+                                          dropout=0,
+                                          drop_path_rate=0,
+                                          activation='gelu',
+                                          return_attention=False)
+               
+        decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        
+        num_skip_connection=min(decoder.num_layers, encoder.num_layers)
+        x= [torch.randn(1, embed_dim,num_patches) for _ in range(num_skip_connection) ]  # Simuler un tensor d'entrée
+        pseudo_skip_connection = Skip_Connection(num_skip_connection=num_skip_connection,
+                                                      embed_dim=embed_dim,
+                                                      list_in_channels=[decoder.upsampling_blocks[-k-1].in_channels for k in range(num_skip_connection)]
+                                                      )
+
+        res= pseudo_skip_connection(x)
+        print(f"Shape après Skip Connection: {[ri.shape for ri in res]}")  # Liste de résidus transformés
+        
+        decoder(torch.randn(1, embed_dim,num_patches ), res)  
+    if False:
+        
+        input_size=256
+        num_patches=256 
+        embed_dim=768 
+        embedding_type='sinusoidal'
+        dropout=0.1
+        in_channels=10
+        patch_size=16               
+        num_layers=4
+        num_heads=8
+        mlp_ratio=4.0
+        attention_dropout=0.1
+        drop_path_rate=0.0
+        norm_layer=nn.LayerNorm
+        activation='gelu'
+        return_attention=False
+
+        patch_embedding = PatchEmbedding(img_size=input_size,
+                                              in_channels=in_channels,
+                                              embed_dim=embed_dim,
+                                              patch_size=patch_size)
+        
+        positional_embedding = PositionalEmbedding(num_patches=num_patches,
+                                                        embed_dim=embed_dim,
+                                                        embedding_type=embedding_type,
+                                                        dropout=dropout)
+        
+        encoder = TransformerEncoder(embed_dim=embed_dim,
+                                          num_layers=num_layers,
+                                          num_heads=num_heads,
+                                          mlp_ratio=mlp_ratio,
+                                          dropout=attention_dropout,
+                                          drop_path_rate=drop_path_rate,
+                                          norm_layer=norm_layer,
+                                          activation=activation,
+                                          return_attention=return_attention)
+                
+        decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        
+        num_skip_connection = min(decoder.num_layers, num_layers)  # Limiter le nombre de connexions résiduelles
+        pseudo_skip_connection = Skip_Connection(num_skip_connection=num_skip_connection,
+                                                      embed_dim=embed_dim,
+                                                      list_in_channels=[decoder.upsampling_blocks[-k-1].in_channels for k in range(num_skip_connection)]
+                                                      )
+        input= torch.randn(1, in_channels, input_size, input_size)  # Simuler un tensor d'entrée
+        x_emb = patch_embedding(input)
+        x_pos= positional_embedding(x_emb)
+        x,list_residuals = encoder(x_pos)
+        skip_residuals = pseudo_skip_connection(list_residuals) 
+        output = decoder(x, skip_residuals)
+        print(f"Shape d'entrée: {input.shape}")
+        print(f"Shape après le modèle: {output.shape}")  # Devrait être (1, 1, input_size, input_size)
+
+    if True: # test de TransformerArchitecure
+        import json
+        with open('Tparams.json', 'r') as f:
+            conf = json.load(f)
+
+        model= TransformerArchitectures(conf)
+        callbacks = [
+            RichProgressBar(),
+            ModelCheckpoint(
+                monitor='val_mae',
+                mode='min',
+                save_top_k=1,
+                save_last=True,
+                filename='l1_loss-{epoch:02d}-{val_loss:.3f}'
+            ),
+            LearningRateMonitor(logging_interval='epoch'),
+            EarlyStopping(
+                monitor='val_loss',
+                min_delta=0.001,
+                patience=20,
+                verbose=True,
+                mode='min',
+                strict=True,
+            )
+        ]
+
+        # Spécifiez le chemin vers le fichier de checkpoint
+
+        # Créez le Trainer
+        trainer = pl.Trainer(
+            accelerator='gpu',
+            devices=1,
+            max_epochs=1,
+            num_sanity_val_steps=2,
+            logger=TensorBoardLogger('checkpoints', name='test'+conf['experiment_name'] + "_" + "_".join(conf['sources'] + [conf['method']])),
+            callbacks=callbacks
+        )
+
+        print("Training...")
+        print(conf['sources'])
+        print(conf['method'])
+        trainer.fit(model)
+
+        # Testez le modèle
+        trainer.test(model)
 
 
 

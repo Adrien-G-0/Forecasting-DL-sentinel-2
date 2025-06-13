@@ -70,7 +70,17 @@ class Dataset(data.Dataset):
                 # Onehot encoding 
                 img = self.onehot(img,conf['num_class_sau'])
                 img = img.astype(np.float32)
+            if t=='esa':
+                # Onehot encoding
+                if isinstance(img, np.ndarray):
+                    img = img // 10
+                elif isinstance(img, torch.Tensor):
+                    img = img // torch.tensor(10, dtype=img.dtype)
+                img = self.onehot(img,conf['num_class_esa'])
+                img = img.astype(np.float32)
+
             inputs.append(torch.from_numpy(img).float())
+
 
         # loading target data
         targets = []

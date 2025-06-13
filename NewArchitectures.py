@@ -18,7 +18,7 @@ class NewArchitectures(Base):
         super(NewArchitectures, self).__init__(params)
         
         # reorganize sources values
-        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau']
+        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau','esa']
         ordered_sources = []
         for source in source_order:
             if source in self.conf['sources']:
@@ -39,9 +39,11 @@ class NewArchitectures(Base):
                 if source == 'sar' :
                     input_channels = input_channels +2
                 if source == 'lc':
-                    input_channels = input_channels +8#self.conf['num_class_lc']  # should be 8
+                    input_channels = input_channels +self.conf['num_class_lc']  # should be 8
                 if source == 'sau':
-                    input_channels = input_channels +10#self.conf['num_class_sau']  # should be 10
+                    input_channels = input_channels +self.conf['num_class_sau']  # should be 10
+                if source =='esa':
+                    input_channels = input_channels +self.conf['num_class_esa']  # should be 10
         
             # define architecture
             self.net=Unet(input_channels)
@@ -68,6 +70,9 @@ class NewArchitectures(Base):
         self.max_dict = self.load_dict(self.conf['max_dict_01'])
         self.loaded_min_dict_before_normalization = self.load_dict(self.conf['min_dict'])
         self.loaded_max_dict_before_normalization = self.load_dict(self.conf['max_dict'])
+
+        self.num_parameters=sum(p.numel() for p in self.parameters())
+        self.log('number of parameters', self.num_parameters)
 
     def load_dict(self, name):
         with open(name, 'rb') as f:
@@ -139,18 +144,21 @@ class NewArchitectures(Base):
         # create transformation function
         def transform_inputs(inps):
             # create transformation
-            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau', 'ndvi']
+            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau','esa', 'ndvi']
             inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
-            inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dtm, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dtm'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+            # Ensure all sources have a value, defaulting to a zero tensor
+            inps_dict = {source: inps_dict.get(source, torch.zeros_like(next(iter(inps_dict.values())))) for source in sources_possibles}
+            
+            # Extract values for required sources
+            rgb, hs, dtm, sar, lc, sau, esa, ndvi = (inps_dict.get(key) for key in sources_possibles)
 
 
             normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
-            # no normalization for lc and sau because it is onehot encoded
+            # no normalization for lc, sau,esa because it is onehot encoded
 
 
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
@@ -161,6 +169,7 @@ class NewArchitectures(Base):
             ndvi = ndvi.numpy()
             lc=lc.numpy()
             sau=sau.numpy()
+            esa=esa.numpy()
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
@@ -169,6 +178,7 @@ class NewArchitectures(Base):
             ndvi = ndvi.astype(np.float32)
             lc = lc.astype(np.float32)
             sau = sau.astype(np.float32)
+            esa = esa.astype(np.float32)
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
@@ -177,13 +187,8 @@ class NewArchitectures(Base):
 
 
             # initialize the transforms
-            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
-                                    additional_targets={'hs': 'image',
-                                                        'dtm': 'image',
-                                                        'sar': 'image',
-                                                        'lc': 'image',
-                                                        'sau': 'image',
-                                                        'ndvi': 'image'})
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False, 
+                                    additional_targets={key: 'image' for key in sources_possibles[1:]}) # rgb is not part of the additinnal target because it is the reference for size
             # apply the transforms
             sample = transforms(image=rgb,
                                 hs=hs,
@@ -191,19 +196,14 @@ class NewArchitectures(Base):
                                 sar=sar,
                                 lc=lc,
                                 sau=sau,
+                                esa=esa,
                                 ndvi=ndvi
                                 
                                 )
             # get images
-            rgb = sample['image']
-            hs = sample['hs']
-            dtm = sample['dtm']
-            sar = sample['sar']
-            lc= sample['lc']
-            sau = sample['sau']
-            ndvi = sample['ndvi']
+            rgb, hs, dtm, sar, lc, sau, esa, ndvi = sample['image'],*(sample[key] for key in sources_possibles[1:])
 
-            outputs_dict = {'rgb': rgb, 'hs': hs, 'dtm': dtm, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
+            outputs_dict = {key: locals()[key] for key in sources_possibles}
             # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
