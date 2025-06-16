@@ -30,10 +30,11 @@ class Middle_fusion_en(nn.Module):
         self.conf_hs = conf["conf_hs"]
         self.conf_lc = conf["conf_lc"]
         self.conf_sau = conf["conf_sau"]
+        self.conf_esa = conf["conf_esa"]
         
         # Check if the sources are valid
-        if not all(source in ['rgb', 'hs',  'dtm','sar','lc','sau'] for source in self.sources):
-            raise Exception("Invalid sources, must be in ['rgb', 'hs', 'dtm', 'sar','lc','sau' ]")
+        if not all(source in ['rgb', 'hs',  'dtm','sar','lc','sau','esa'] for source in self.sources):
+            raise Exception("Invalid sources, must be in ['rgb', 'hs', 'dtm', 'sar','lc','sau','esa' ]")
         
         # Check if the number of channels and kernels are consistent
         if len(self.conf_rgb['channels']) != len(self.conf_rgb['kernels']) + 1:
@@ -48,7 +49,9 @@ class Middle_fusion_en(nn.Module):
             raise Exception("LC configurations are wrong, channels length must be equal to kernels length + 1")
         if len(self.conf_sau['channels']) != len(self.conf_sau['kernels']) + 1: 
             raise Exception("SAU configurations are wrong, channels length must be equal to kernels length + 1")
-        
+        if len(self.conf_esa['channels']) != len(self.conf_esa['kernels']) + 1: 
+            raise Exception("ESA configurations are wrong, channels length must be equal to kernels length + 1")
+
         # Create convolutional blocks for each source
         for source in self.sources:
             if source == 'rgb':
@@ -63,6 +66,8 @@ class Middle_fusion_en(nn.Module):
                 self.conv[source] = ConvBlock_mf(self.conf_lc)
             elif source == 'sau':
                 self.conv[source] = ConvBlock_mf(self.conf_sau)
+            elif source == 'esa':
+                self.conv[source] = ConvBlock_mf(self.conf_esa)
         
         # # Register the modules properly
         # for source in self.sources:

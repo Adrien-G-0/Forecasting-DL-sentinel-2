@@ -4,7 +4,8 @@ from NewArchitectures import NewArchitectures
 import weightwatcher as ww
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
-
+import torch
+import torch.nn.functional as F
 
 def comparaison_prediction(model_path, batch_idx):
     device="cuda"
@@ -130,3 +131,35 @@ def ww_model(model, savefig=None):
         plt.savefig(savefig, bbox_inches='tight')
     else:
         plt.show()
+
+
+
+
+def calculate_tensor_gradient(image_tensor):
+    # Assurez-vous que l'image est en niveaux de gris
+    if image_tensor.dim() == 3 and image_tensor.shape[0] == 3:
+        # Convertir en niveaux de gris en prenant la moyenne des canaux
+        gray_tensor = image_tensor.mean(dim=0, keepdim=True)
+    else:
+        gray_tensor = image_tensor
+
+    # Définir les noyaux de Sobel pour les gradients en x et y
+    sobel_x = torch.tensor([[-1, 0, 1],
+                            [-2, 0, 2],
+                            [-1, 0, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+
+    sobel_y = torch.tensor([[-1, -2, -1],
+                            [0, 0, 0],
+                            [1, 2, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+
+    # Calculer les gradients en x et y
+    grad_x = F.conv2d(gray_tensor, sobel_x, padding=1)
+    grad_y = F.conv2d(gray_tensor, sobel_y, padding=1)
+
+    # Calculer la magnitude du gradient
+    grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
+
+    # Normaliser la magnitude du gradient
+    grad_magnitude = (grad_magnitude - grad_magnitude.min()) / (grad_magnitude.max() - grad_magnitude.min())
+
+    return grad_magnitude

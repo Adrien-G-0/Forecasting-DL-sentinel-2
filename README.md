@@ -23,7 +23,7 @@ All modalities are resized to be processed with a size of [channels, 256, 256].
 - **Train augmentation**: uniform rotation
 - **Class-images**: OneHot encoding
 
-### middle_fusion_.py
+### middle_fusion.py
 **Features**:
 - Automatic creation of a CNN for each input source
 - Transformation of inputs with dimension [channels, 256, 256] to [to_determine, 256, 256]
@@ -31,6 +31,13 @@ All modalities are resized to be processed with a size of [channels, 256, 256].
     The number of channels for each step of the transformation can be specified in the `params.json` file under the `conf_'source'` key.
     ```
 - Concatenation of CNN outputs to form a fused tensor
+
+### late_fusion.py
+**Features**:
+- Automatic creation of a CNN for each input source
+- Create an encoding CNN for each input source, from size [source_channels * 2⁴, 256, 256] to [source_channels* 2⁴, 16, 16]
+- Concatenate the features in source_channels
+- Recreate the targeted imaged trough simple CNN decodeur
 
 ### NewBase
 Defines all functions for the Lightning module
@@ -54,8 +61,8 @@ Create a params.json file based on the empty_params.json file at the root of the
 
 - `root_dir`: path to the folder containing train, val, and test folders
 - `mean_dict_01`, `std_dict_01`, `max_dict_01`, `max_dict`, `min_dict`: paths used for min-normalization, required for all data types
-- `method`: either "early_fusion" or "middle_fusion"
-- `sources`: a list containing "rgb", "hs", "dtm", "sar", "lc", "sau"
+- `method`: either "early_fusion" , "middle_fusion" , "late_fusion"
+- `sources`: a list containing "rgb", "hs", "dtm", "sar", "lc", "sau","esa"
 
 
 ## Data Storage
@@ -72,6 +79,7 @@ Sources/
 │       └── rgb.tif
 │       └── dtm.tif
 │       └── hs.tif
+│       └── esa.tif
 │       └── ndvi.tif
 │       └── ...
 ├── val/
