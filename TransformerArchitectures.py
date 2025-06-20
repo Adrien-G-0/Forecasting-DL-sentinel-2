@@ -11,9 +11,8 @@ import numpy as np
 from albumentations.pytorch.transforms import ToTensorV2
 import albumentations as A
 
-from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerModel
-from transformers import ViTConfig, ViTModel
 from NewBase import Base
+from SwinTransformers import SwinTranformers,Swin_UperNet
 from middle_fusion import Middle_fusion_en as mf_
 import pytorch_lightning as pl
 
@@ -22,7 +21,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import RichProgressBar
-
+from class_module import *
 
 class TransformerArchitectures(Base):
     def __init__(self, params):
@@ -30,7 +29,7 @@ class TransformerArchitectures(Base):
         super(TransformerArchitectures, self).__init__(params)
         
         # reorganize sources values
-        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau']
+        source_order = ['rgb', 'hs', 'dtm', 'sar','lc','sau','esa']
         ordered_sources = []
         for source in source_order:
             if source in self.conf['sources']:
@@ -54,6 +53,9 @@ class TransformerArchitectures(Base):
                     input_channels = input_channels +self.conf['num_class_lc']  # should be 8
                 if source == 'sau':
                     input_channels = input_channels +self.conf['num_class_sau']  # should be 10
+                if source == 'esa':
+                    input_channels = input_channels +self.conf['num_class_esa']  # should be 10
+        
         
             # define architecture
             self.net=ViTWithDecoder(input_size=self.conf['train_size'][0],
@@ -100,6 +102,26 @@ class TransformerArchitectures(Base):
                                     return_attention=False)
             # Initialization_weight TODO
 
+
+        elif self.conf['method'] == 'swin_transformers':
+            input_channels = 0
+            for source in self.conf['sources']:
+                if source == 'rgb':
+                    input_channels = input_channels + 3
+                if source == 'hs':
+                    input_channels = input_channels + 182
+                if source =='dtm':
+                    input_channels = input_channels + 1
+                if source == 'sar' :
+                    input_channels = input_channels +2
+                if source == 'lc':
+                    input_channels = input_channels +self.conf['num_class_lc']  # should be 8
+                if source == 'sau':
+                    input_channels = input_channels +self.conf['num_class_sau']  # should be 10
+                if source == 'esa':
+                    input_channels = input_channels +self.conf['num_class_esa']
+            
+            self.net=Swin_UperNet(num_channels=input_channels)
 
         self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
         self.std_dict = self.load_dict(self.conf['std_dict_01'])
@@ -156,24 +178,28 @@ class TransformerArchitectures(Base):
             
             return output     
 
-
+        elif self.conf['method'] == 'swin_transformers':
+            return self.net(batch)
 
     def create_transform_function(self, transform_list):
         # create transformation function
         def transform_inputs(inps):
             # create transformation
-            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau', 'ndvi']
+            sources_possibles = ['rgb', 'hs', 'dtm', 'sar','lc','sau','esa', 'ndvi']
             inps_dict = {source: inps[i] for i, source in enumerate(self.conf['sources']+['ndvi'])}  # add ndvi to the inputs dict
 
             # Checking if all keys have a designated value else 0 TODO can maybe be improve to reduce storage and calculations
-            inps_dict = {source: inps_dict.get(source, torch.zeros((1,))) for source in sources_possibles}
-            rgb, hs, dtm, sar, lc, sau, ndvi = inps_dict['rgb'], inps_dict['hs'], inps_dict['dtm'], inps_dict['sar'], inps_dict['lc'],inps_dict['sau'], inps_dict['ndvi']
+            # Ensure all sources have a value, defaulting to a zero tensor
+            inps_dict = {source: inps_dict.get(source, torch.zeros_like(next(iter(inps_dict.values())))) for source in sources_possibles}
+            
+            # Extract values for required sources
+            rgb, hs, dtm, sar, lc, sau, esa, ndvi = (inps_dict.get(key) for key in sources_possibles)
 
 
             normalize_rgb, normalize_hs, normalize_dtm, normalize_sar, transforms_augmentation = transform_list
             #no normalization for ndvi because it is already between -1 and 1
             ndvi=ndvi.unsqueeze(2) # so ndvi has the same shape as the others
-            # no normalization for lc and sau because it is onehot encoded
+            # no normalization for lc, sau,esa because it is onehot encoded
 
 
             rgb = (rgb.numpy() - self.loaded_min_dict_before_normalization['rgb']) / (self.loaded_max_dict_before_normalization['rgb'] - self.loaded_min_dict_before_normalization['rgb'])
@@ -184,6 +210,7 @@ class TransformerArchitectures(Base):
             ndvi = ndvi.numpy()
             lc=lc.numpy()
             sau=sau.numpy()
+            esa=esa.numpy()
 
             rgb = rgb.astype(np.float32)
             hs = hs.astype(np.float32)
@@ -192,6 +219,7 @@ class TransformerArchitectures(Base):
             ndvi = ndvi.astype(np.float32)
             lc = lc.astype(np.float32)
             sau = sau.astype(np.float32)
+            esa = esa.astype(np.float32)
             
             rgb = normalize_rgb(image=rgb)['image']
             hs = normalize_hs(image=hs)['image']
@@ -200,13 +228,8 @@ class TransformerArchitectures(Base):
 
 
             # initialize the transforms
-            transforms = A.Compose([transforms_augmentation], is_check_shapes=False,
-                                    additional_targets={'hs': 'image',
-                                                        'dtm': 'image',
-                                                        'sar': 'image',
-                                                        'lc': 'image',
-                                                        'sau': 'image',
-                                                        'ndvi': 'image'})
+            transforms = A.Compose([transforms_augmentation], is_check_shapes=False, 
+                                    additional_targets={key: 'image' for key in sources_possibles[1:]}) # rgb is not part of the additinnal target because it is the reference for size
             # apply the transforms
             sample = transforms(image=rgb,
                                 hs=hs,
@@ -214,19 +237,14 @@ class TransformerArchitectures(Base):
                                 sar=sar,
                                 lc=lc,
                                 sau=sau,
+                                esa=esa,
                                 ndvi=ndvi
                                 
                                 )
             # get images
-            rgb = sample['image']
-            hs = sample['hs']
-            dtm = sample['dtm']
-            sar = sample['sar']
-            lc= sample['lc']
-            sau = sample['sau']
-            ndvi = sample['ndvi']
+            rgb, hs, dtm, sar, lc, sau, esa, ndvi = sample['image'],*(sample[key] for key in sources_possibles[1:])
 
-            outputs_dict = {'rgb': rgb, 'hs': hs, 'dtm': dtm, 'sar': sar ,'lc': lc, 'sau':sau, 'ndvi': ndvi}
+            outputs_dict = {key: locals()[key] for key in sources_possibles}
             # get needed output values without the others
             output = list(outputs_dict[source] for source in self.conf['sources']) + [ndvi]
             return output
@@ -280,273 +298,9 @@ class TransformerArchitectures(Base):
     
     def test_transforms(self):
         return self.val_transforms()
+        return self.val_transforms()
 
 
-class PositionalEmbedding(nn.Module):
-    """
-    Positional Embedding pour Vision Transformer (ViT)
-    Supporte les embeddings apprenables et sinusoïdaux
-    """
-    
-    def __init__(self, 
-                 num_patches, 
-                 embed_dim, 
-                 embedding_type='learnable',
-                 dropout=0.1):
-        """
-        Args:
-            num_patches (int): Nombre de patches dans l'image
-            embed_dim (int): Dimension des embeddings
-            embedding_type (str): 'learnable' ou 'sinusoidal'
-            dropout (float): Taux de dropout
-        """
-        super().__init__()
-        
-        self.num_patches = num_patches
-        self.embed_dim = embed_dim
-        self.embedding_type = embedding_type
-        
-        
-        # Nombre total de positions (patches )
-        self.num_positions = num_patches 
-        
-        if embedding_type == 'learnable':
-            # Embeddings apprenables (approche standard ViT)
-            self.pos_embedding = nn.Parameter(
-                torch.randn(1, self.num_positions, embed_dim) * 0.02
-            )
-        elif embedding_type == 'sinusoidal':
-            # Embeddings sinusoïdaux fixes (comme dans les Transformers originaux)
-            self.register_buffer('pos_embedding', 
-                               self._create_sinusoidal_embeddings())
-        else:
-            raise ValueError("embedding_type doit être 'learnable' ou 'sinusoidal'")
-            
-        self.dropout = nn.Dropout(dropout)
-    
-    def _create_sinusoidal_embeddings(self):
-        """Crée les embeddings positionnels sinusoïdaux"""
-        pe = torch.zeros(self.num_positions, self.embed_dim)
-        position = torch.arange(0, self.num_positions).unsqueeze(1).float()
-        
-        div_term = torch.exp(torch.arange(0, self.embed_dim, 2).float() *
-                           -(math.log(10000.0) / self.embed_dim))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        
-        return pe.unsqueeze(0)  # Ajoute la dimension batch
-    
-    def forward(self, x):
-        """
-        Args:
-            x (torch.Tensor): Tensor d'entrée de shape (batch_size, seq_len, embed_dim)
-                             où seq_len = num_patches
-        
-        Returns:
-            torch.Tensor: x + positional embeddings avec dropout appliqué
-        """
-        batch_size, seq_len, _ = x.shape
-        
-        # Vérification des dimensions
-        if seq_len != self.num_positions:
-            raise ValueError(f"Longueur de séquence {seq_len} ne correspond pas "
-                           f"au nombre de positions {self.num_positions}")
-        
-        # Ajoute les embeddings positionnels
-        # pos_embedding = self.pos_embedding.expand(batch_size, seq_len, self.embed_dim)
-        x = x + self.pos_embedding[:, :seq_len, :]
-        return self.dropout(x)
-    
-    def interpolate_pos_embedding(self, new_num_patches):
-        """
-        Interpole les embeddings positionnels pour une nouvelle taille d'image
-        Utile pour le fine-tuning avec des résolutions différentes
-        """
-        if self.embedding_type != 'learnable':
-            raise NotImplementedError("L'interpolation n'est supportée que pour les embeddings apprenables")
-        
-        old_num_patches = self.num_patches
-        
-        if old_num_patches == new_num_patches:
-            return
-        
-        
-        patch_pos_embed = self.pos_embedding
-        
-        # Calcule les dimensions de la grille
-        old_grid_size = int(math.sqrt(old_num_patches))
-        new_grid_size = int(math.sqrt(new_num_patches))
-        
-        # Reshape pour interpolation 2D
-        patch_pos_embed = patch_pos_embed.reshape(
-            1, old_grid_size, old_grid_size, self.embed_dim
-        ).permute(0, 3, 1, 2)  # (1, embed_dim, H, W)
-        
-        # Interpolation bilinéaire
-        patch_pos_embed = torch.nn.functional.interpolate(
-            patch_pos_embed,
-            size=(new_grid_size, new_grid_size),
-            mode='bilinear',
-            align_corners=False
-        )
-        
-        # Reshape vers la forme originale
-        patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).reshape(
-            1, new_num_patches, self.embed_dim
-        )
-        
-        # Reconstruit les embeddings complets
-        new_pos_embedding = patch_pos_embed
-        
-        # Met à jour les paramètres
-        self.pos_embedding = nn.Parameter(new_pos_embedding)
-        self.num_patches = new_num_patches
-        self.num_positions = new_num_patches + (1 if self.include_cls_token else 0)
-
-
-class PatchEmbedding(nn.Module):
-    def __init__(self, img_size:int, in_channels:int, embed_dim:int,patch_size:int=16):
-        super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.n_patches = (img_size // patch_size) ** 2
-        self.embed_dim = embed_dim
-        
-        # Projection linéaire des patches
-        self.projection = nn.Conv2d(
-            in_channels, embed_dim, 
-            kernel_size=patch_size, stride=patch_size
-        )
-    def forward(self, x):
-        
-        x = self.projection(x)    # x shape: (batch_size, in_channels, n_patches**0.5, n_patches**0.5)
-        x = x.flatten(2)    # x shape: (batch_size, embed_dim, n_patches)
-        x = x.transpose(1, 2)# x shape: (batch_size, n_patches, embed_dim)
-
-        return x 
-        
-class DropPath(nn.Module):
-    """
-    Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)
-    """
-    def __init__(self, drop_prob=None):
-        super().__init__()
-        self.drop_prob = drop_prob
-
-    def forward(self, x):
-        if self.drop_prob == 0.0 or not self.training:
-            return x
-        keep_prob = 1 - self.drop_prob
-        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-        random_tensor.floor_()
-        output = x.div(keep_prob) * random_tensor
-        return output
-
-
-class MultiHeadSelfAttention(nn.Module):
-    """
-    Module d'auto-attention multi-têtes avec nombre de têtes variable
-    """
-    def __init__(self, embed_dim, num_heads, dropout=0.1, bias=True):
-        super().__init__()
-        assert embed_dim % num_heads == 0, f"embed_dim ({embed_dim}) doit être divisible par num_heads ({num_heads})"
-        
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        self.scale = 1.0 / math.sqrt(self.head_dim)
-        
-        # Projections pour Q, K, V
-        self.qkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
-        
-        # Projection de sortie
-        self.proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        
-        # Dropout
-        self.attn_dropout = nn.Dropout(dropout)
-        self.proj_dropout = nn.Dropout(dropout)
-        
-    def forward(self, x, mask=None):
-        """
-        Args:
-            x: [batch_size, seq_len, embed_dim]
-            mask: [batch_size, seq_len, seq_len] ou None
-        Returns:
-            output: [batch_size, seq_len, embed_dim]
-            attention_weights: [batch_size, num_heads, seq_len, seq_len]
-        """
-        B, N, C = x.shape
-        
-        # Calcul de Q, K, V
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, head_dim]
-        
-        # Calcul des scores d'attention
-        attn_scores = (q @ k.transpose(-2, -1)) * self.scale  # [B, num_heads, N, N]
-        
-        # Application du masque si fourni
-        if mask is not None:
-            if mask.dim() == 3:  # [B, N, N]
-                mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
-            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
-        
-        # Softmax
-        attn_weights = F.softmax(attn_scores, dim=-1)
-        attn_weights = self.attn_dropout(attn_weights)
-        
-        # Application de l'attention aux valeurs
-        attn_output = (attn_weights @ v).transpose(1, 2).reshape(B, N, C)
-        
-        # Projection finale
-        output = self.proj(attn_output)
-        output = self.proj_dropout(output)
-        
-        return output, attn_weights
-
-class FeedForward(nn.Module):
-    """
-    Feed-Forward Network avec activation GELU
-    """
-    def __init__(self, embed_dim, mlp_ratio=4.0, dropout=0.1, activation='gelu'):
-        super().__init__()
-        hidden_dim = int(embed_dim * mlp_ratio)
-        
-        self.fc1 = nn.Linear(embed_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, embed_dim)
-        self.dropout = nn.Dropout(dropout)
-        
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-        elif activation == 'swish':
-            self.activation = nn.SiLU()
-        else:
-            raise ValueError(f"Activation {activation} none supported, use 'gelu', 'relu' or 'swish'")
-    
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.activation(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.dropout(x)
-        return x
-
-class EncoderBlock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv_block1 = ConvBlock(in_channels, out_channels)
-        self.conv_block2 = ConvBlock(out_channels, out_channels)
-        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-
-    def forward(self, x):
-        x = self.conv_block1(x)
-        x = self.conv_block2(x)
-        residual = x
-        output = self.pool(x)
-        return output, residual
 
 class TransformerBlock(nn.Module):
     """
@@ -696,34 +450,6 @@ class TransformerDecoder(nn.Module):
             x = layer(x)
         return x
 
-class ConvBlock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.bn=torch.nn.BatchNorm2d(out_channels)
-        self.relu = torch.nn.ReLU()
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn(x)
-        x = self.relu(x)
-        return x
-
-class UpsamplingBlock(torch.nn.Module):
-        def __init__(self, in_channels, out_channels):
-            super(UpsamplingBlock, self).__init__()
-            self.in_channels = in_channels
-            self.out_channels = out_channels
-            self.upsample = torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv_block1 = ConvBlock(in_channels, in_channels)
-            self.conv_block2 = ConvBlock(in_channels, out_channels)
-
-        def forward(self, x):
-            x = self.upsample(x)
-            x = self.conv_block1(x)
-            x = self.conv_block2(x)
-            return x
-
 
 class CNNDecoder(nn.Module):
     def __init__(self, patch_size,output_size,embed_dim, num_patches):
@@ -844,7 +570,7 @@ class Transformerswithdetails(nn.Module):
                  input_size,
                  num_patches, 
                  embed_dim, 
-                 embedding_type='learnable',
+                 embedding_type='sinusoidal',
                  dropout=0.1,
                  in_channels=2, 
                  patch_size:int=16,                 
@@ -857,8 +583,29 @@ class Transformerswithdetails(nn.Module):
                  activation='gelu',
                  return_attention=False):
         super().__init__()
+        # Save input parameters
+        self.input_size = input_size
+        self.num_patches = num_patches
+        self.embed_dim = embed_dim
+        self.embedding_type = embedding_type
+        self.dropout = dropout
+        self.in_channels = in_channels
+        self.patch_size = patch_size
+        self.num_layers_transformers = num_layers_transformers
+        self.num_heads = num_heads
+        self.mlp_ratio = mlp_ratio
+        self.attention_dropout = attention_dropout
+        self.drop_path_rate = drop_path_rate
+        self.norm_layer = norm_layer
+        self.activation = activation
+        self.return_attention = return_attention
 
+        
         self.patch_embedding = PatchEmbedding(img_size=input_size,
+                                              in_channels=in_channels,
+                                              embed_dim=embed_dim,
+                                              patch_size=patch_size)
+        self.details_embedding=PatchEmbedding(img_size=input_size,
                                               in_channels=in_channels,
                                               embed_dim=embed_dim,
                                               patch_size=patch_size)
@@ -868,148 +615,84 @@ class Transformerswithdetails(nn.Module):
                                                         embedding_type=embedding_type,
                                                         dropout=dropout)
 
-        self.encoder = TransformerEncoder(embed_dim=embed_dim,
-                                          num_layers=num_layers_transformers,
-                                          num_heads=num_heads,
-                                          mlp_ratio=mlp_ratio,
-                                          dropout=attention_dropout,
-                                          drop_path_rate=drop_path_rate,
-                                          norm_layer=norm_layer,
-                                          activation=activation,
-                                          return_attention=return_attention)
+        self.details_encoder=TransformerEncoder(embed_dim=embed_dim,
+                                                num_layers=4,
+                                                num_heads=4,
+                                                mlp_ratio=4,
+                                                return_attention=False
+                                                )
         
-        self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
+        self.encoder=TransformerEncoder(embed_dim=embed_dim,
+                                                num_layers=num_layers_transformers,
+                                                num_heads=num_heads,
+                                                mlp_ratio=mlp_ratio,
+                                                return_attention=False
+                                                )
+
+        self.decoder= nn.Sequential(UpsamplingBlock(2*embed_dim,embed_dim//2),
+                                    UpsamplingBlock(embed_dim//2,embed_dim//8),
+                                    UpsamplingBlock(embed_dim//8,embed_dim//16),
+                                    UpsamplingBlock(embed_dim//16,1))
+                                 
+
+
+
+    def forward(self,x):
         
-        self.details = calculate_tensor_gradient
+        details=calculate_tensor_gradient(x)
 
-        self.encoder1 = EncoderBlock(in_channels, 64)
-        self.encoder2 = EncoderBlock(64, 128)
-        self.encoder3 = EncoderBlock(128, 256)
-        self.encoder4 = EncoderBlock(256, 512)
+        x_emb = self.patch_embedding(x)
+        details_emb=self.details_embedding(details)
+        
+        x_emb_pe = self.positional_embedding(x_emb)
+        details_emb_pe = self.positional_embedding(details_emb)
 
-        def forward(self,x):
-            x_emb = self.patch_embedding(x)
-            x_emb_pe = self.positional_embedding(x_emb)
-            x_encoded,_ = self.encoder(x_emb_pe)
+        details_encoded,_=self.details_encoder(details_emb_pe)
+        x_encoded,_=self.encoder(x_emb_pe)
+
+        x=torch.cat((x_encoded,details_encoded),dim=2) #fusion of values features and geographic details
+        x=x.permute(0,2,1)
+        x=x.view(x.size(0),x.size(1),self.patch_size,self.patch_size)
+
+        x=self.decoder(x)
+
+        return x
+
 
 def calculate_tensor_gradient(image_tensor):
-    # Assurez-vous que l'image est en niveaux de gris
-    if image_tensor.dim() == 3 and image_tensor.shape[0] == 3:
-        # Convertir en niveaux de gris en prenant la moyenne des canaux
-        gray_tensor = image_tensor.mean(dim=0, keepdim=True)
-    else:
-        gray_tensor = image_tensor
-
-    # Définir les noyaux de Sobel pour les gradients en x et y
+    """
+    Version avec normalisation globale sur tout le batch
+    """
+    batch_size = image_tensor.size(0)
+    num_channels = image_tensor.size(1)
+    device = image_tensor.device
+    dtype = image_tensor.dtype
+    
+    # Définir les noyaux de Sobel
     sobel_x = torch.tensor([[-1, 0, 1],
-                            [-2, 0, 2],
-                            [-1, 0, 1]], dtype=torch.float32).view(1, 1, 3, 3)
-
+                           [-2, 0, 2],
+                           [-1, 0, 1]], dtype=dtype, device=device).unsqueeze(0).unsqueeze(0).expand(num_channels, 1, 3, 3)
+    
     sobel_y = torch.tensor([[-1, -2, -1],
-                            [0, 0, 0],
-                            [1, 2, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+                           [0, 0, 0],
+                           [1, 2, 1]], dtype=dtype, device=device).unsqueeze(0).unsqueeze(0).expand(num_channels, 1, 3, 3)
 
-    # Calculer les gradients en x et y
-    grad_x = F.conv2d(gray_tensor, sobel_x, padding=1)
-    grad_y = F.conv2d(gray_tensor, sobel_y, padding=1)
-
+    
+    # Calculer les gradients
+    grad_x = F.conv2d(image_tensor, sobel_x, padding=1, groups=num_channels)
+    grad_y = F.conv2d(image_tensor, sobel_y, padding=1, groups=num_channels)
+    
     # Calculer la magnitude du gradient
     grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
-
-    # Normaliser la magnitude du gradient
-    grad_magnitude = (grad_magnitude - grad_magnitude.min()) / (grad_magnitude.max() - grad_magnitude.min())
-
+    
+    # Normaliser la magnitude du gradient (globalemnt sur tout le tenseur)
+    grad_min = grad_magnitude.min()
+    grad_max = grad_magnitude.max()
+    
+    if (grad_max - grad_min) != 0:
+        grad_magnitude = (grad_magnitude - grad_min) / (grad_max - grad_min)
+    
     return grad_magnitude
-# #New test
-# class ViTWithDecoder2(nn.Module):
-#     def __init__(self, 
-#                  input_size,
-#                  num_patches, 
-#                  embed_dim, 
-#                  embedding_type='learnable',
-#                  dropout=0.1,
-#                  in_channels=2, 
-#                  patch_size:int=16,                 
-#                  num_layers=4,
-#                  num_heads=8,
-#                  mlp_ratio=4.0,
-#                  attention_dropout=0.1,
-#                  drop_path_rate=0.0,
-#                  norm_layer=nn.LayerNorm,
-#                  activation='gelu',
-#                  return_attention=False):
-#         super().__init__()
-#         self.patch_embedding_class = PatchEmbedding(img_size=input_size,
-#                                               in_channels=18,
-#                                               embed_dim=embed_dim//2,
-#                                               patch_size=patch_size)
-        
-#         self.patch_embedding_continuous = PatchEmbedding(img_size=input_size,
-#                                               in_channels=2,
-#                                               embed_dim=embed_dim-embed_dim//2,
-#                                               patch_size=patch_size)
-        
-#         self.positional_embedding = PositionalEmbedding(num_patches=num_patches,
-#                                                         embed_dim=embed_dim,
-#                                                         embedding_type=embedding_type,
-#                                                         dropout=dropout)
-        
-#         self.Tclass=TransformerEncoder(embed_dim=embed_dim//2,
-#                                           num_layers=2,
-#                                           num_heads=num_heads,
-#                                           mlp_ratio=mlp_ratio,
-#                                           dropout=attention_dropout,
-#                                           drop_path_rate=drop_path_rate,
-#                                           norm_layer=norm_layer,
-#                                           activation=activation,
-#                                           return_attention=return_attention)
-        
-#         self.Tcontinuous=TransformerEncoder(embed_dim=embed_dim-embed_dim//2,
-#                                             num_layers=2,
-#                                             num_heads=num_heads,
-#                                             mlp_ratio=mlp_ratio,
-#                                             dropout=attention_dropout,
-#                                             drop_path_rate=drop_path_rate,
-#                                             norm_layer=norm_layer,
-#                                             activation=activation,
-#                                             return_attention=return_attention)
-
-#         self.encoder = TransformerEncoder(embed_dim=embed_dim,
-#                                           num_layers=num_layers-2,
-#                                           num_heads=num_heads,
-#                                           mlp_ratio=mlp_ratio,
-#                                           dropout=attention_dropout,
-#                                           drop_path_rate=drop_path_rate,
-#                                           norm_layer=norm_layer,
-#                                           activation=activation,
-#                                           return_attention=return_attention)
-        
-
-#         self.decoder = CNNDecoder(patch_size=patch_size,output_size=input_size,embed_dim=embed_dim, num_patches=num_patches)
-        
-#         # self.pseudo_skip_connection = ConvBlock(in_channels=in_channels, out_channels=1)
-
-#     def forward(self, x):
-#         x_class = x[:,2:]
-#         x_continuous = x[:,:2]
-#         x_class_emb = self.patch_embedding_class(x_class)
-#         x_continuous_emb = self.patch_embedding_continuous(x_continuous)
-
-#         x_emb= torch.cat([x_continuous_emb,x_class_emb], dim=-1)  # Concaténer les embeddings
-#         x_emb_pe = self.positional_embedding(x_emb)
-
-#         x_encoded_class = self.Tclass(x_emb_pe[:,-2:])  # Exclure les tokens de classe
-#         x_encoded_continuous = self.Tcontinuous(x_emb_pe[:,:-2])  # Exclure les tokens de classe
-
-#         x_encoded = torch.cat([x_encoded_continuous, x_encoded_class], dim=-1)  # Concaténer les sorties encodées
-#         x_encoded = self.encoder(x_emb_pe)
-
-#         # x_emb = self.patch_embedding(x)
-#         # x_emb_pe = self.positional_embedding(x_emb)
-        
-#         # x_encoded = self.encoder(x_emb_pe)
-#         output = self.decoder(x_encoded) #self.pseudo_skip_connection(x) +
-#         return output 
 
 class ViTWithDecoder(nn.Module):
     def __init__(self, 
@@ -1070,8 +753,32 @@ class ViTWithDecoder(nn.Module):
         output = self.decoder(x_encoded,skip_residuals) 
         return output
 
+'''
+class Transformer_latefusion(nn.Module):
+    def __init__(self, 
+                 input_size,
+                 num_patches, 
+                 embed_dim, 
+                 embedding_type='learnable',
+                 dropout=0.1,
+                 in_channels=2, 
+                 patch_size:int=16,                 
+                 num_layers_transformers=4,
+                 num_heads=8,
+                 mlp_ratio=4.0,
+                 attention_dropout=0.1,
+                 drop_path_rate=0.0,
+                 norm_layer=nn.LayerNorm,
+                 activation='gelu',
+                 return_attention=False):
+        super().__init__() 
 
+        self.patch_embedding=PatchEmbedding(img_size=input_size,in_channels=in_channels,embed_dim=embed_dim,patch_size=patch_size)
 
+        self.positionnal_embedding=PositionalEmbedding(num_patches=num_patches,embed_dim=embed_dim,embedding_type=embedding_type)
+
+        self.encoder=nn.ModuleDict()
+        for 
 
 # class TransformerEncoder(nn.Module):
 #     def __init__(self, embed_dim, num_heads, num_layers, dropout=0.1):
@@ -1087,7 +794,7 @@ class ViTWithDecoder(nn.Module):
 #     def forward(self, x):
 #         x = self.transformer_encoder(x)
 #         return x
-    
+'''  
 
 
 class VisionTransformer(nn.Module):

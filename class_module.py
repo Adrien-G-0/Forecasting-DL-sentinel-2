@@ -285,17 +285,20 @@ class ConvBlock(torch.nn.Module):
         return x
 
 class UpsamplingBlock(torch.nn.Module):
-        def __init__(self, in_channels, out_channels):
+        def __init__(self, in_channels, out_channels, skip_channels):
             super(UpsamplingBlock, self).__init__()
-            self.in_channels = in_channels
-            self.out_channels = out_channels
             self.upsample = torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv_block1 = ConvBlock(in_channels, in_channels)
-            self.conv_block2 = ConvBlock(in_channels, out_channels)
+            self.conv_block1 = ConvBlock(in_channels + skip_channels, in_channels)
+            self.conv_block2 = ConvBlock(in_channels, in_channels)
+            self.conv_block3 = ConvBlock(in_channels, out_channels)
 
-        def forward(self, x):
-            x = self.upsample(x)
+        def forward(self, x, skip_connection):
+            x = torch.cat((x, skip_connection), dim=1)
             x = self.conv_block1(x)
+            x = self.upsample(x)
+            
+            
             x = self.conv_block2(x)
+            x = self.conv_block3(x)
             return x
 

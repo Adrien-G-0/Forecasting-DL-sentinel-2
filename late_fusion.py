@@ -134,8 +134,33 @@ class LateFusion(nn.Module):
         output= 2* self.activation(outputs)-1
 
         return output
+        
     
 
+
+
+class LateFusionDecoder(nn.Module):
+    def __init__(self,conf):
+        super().__init__()
+        self.sources = conf["sources"]
+        self.input_channels = np.sum([conf["conf_"+source]["channels"][0] for source in self.sources]) *2**4  # Assuming the input channels are doubled at each stage
+
+        self.upsampling_list = nn.ModuleList([
+            UpsamplingBlock(self.input_channels, self.input_channels // 2,self.input_channels),
+            UpsamplingBlock(self.input_channels // 2, self.input_channels // 4,self.input_channels // 2),
+            UpsamplingBlock(self.input_channels // 4, self.input_channels // 8,self.input_channels // 4),
+            UpsamplingBlock(self.input_channels // 8, 1,self.input_channels // 8)
+        ])
+
+    def forward(self, list_residuals):
+        list_residuals = list(reversed(list_residuals))  # Reverse the order of residuals to start from the last layer
+        x=torch.zeros_like(list_residuals[0])
+        x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
+        for res,decoder in zip(list_residuals,self.upsampling_list):
+            x = decoder(x, res)
+        outputs = x
+            
+        return outputs
 
 if __name__ == '__main__':
     import json
