@@ -83,7 +83,7 @@ Partially at the beginning
 
 ### Decoding Part
 
-- **CNN with Skip Connections**
+- **CNN with Skip Connections**  ***(also tested with contour details replacing skip connections)***
   - **Architecture**: Convolutional neural network with residual connections.
   - **Layers**: Convolutions and upsampling with skip connections for improved reconstruction.
   - **Usage**: Image segmentation and data reconstruction.
