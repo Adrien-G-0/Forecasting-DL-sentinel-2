@@ -1,45 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from NewArchitectures import NewArchitectures
 import weightwatcher as ww
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 import torch
 import torch.nn.functional as F
-
-def comparaison_prediction(model_path, batch_idx):
-    device="cuda"
-    model=NewArchitectures.load_from_checkpoint(model_path)
-    dl=model.test_dataloader()
-    model = model.to(device)
-   
-   # Iterate through multiple batches
-    for batch_idx, batch in enumerate(dl):
-        if batch_idx==batch_idx:
-            inputs, targets, _ = batch
-            inputs = [inp.to(device) for inp in inputs]
-            outputs = model(inputs)
-
-            for img_idx in range(len(inputs)):
-            # Visualization for each batch
-            # Calculate and print L1 loss for the batch
-                l1 = np.mean(np.abs(targets[img_idx, 0].cpu().detach().numpy() - outputs[img_idx, 0].cpu().detach().numpy()))
-            print(f"Batch {batch_idx} image {img_idx} L1 Loss: {l1}")
-            fig, ax = plt.subplots(1, 4, figsize=(15, 5))
-            im0 = ax[0].imshow(outputs[img_idx, 0].cpu().detach().numpy(), cmap='viridis')
-            ax[0].set_title("Output")
-            im1 = ax[1].imshow(targets[img_idx, 0].cpu().detach().numpy(), cmap='viridis')
-            ax[1].set_title("Target")
-            im2 = ax[2].imshow(np.abs(targets[img_idx, 0].cpu().detach().numpy() - outputs[img_idx, 0].cpu().detach().numpy()))
-            ax[2].set_title("Error")
-            cbar = fig.colorbar(im1, ax=[ax[1], ax[2]], orientation='vertical', fraction=0.046, pad=0.04)
-            cbar.set_label('Color Intensity')
-            im3 = ax[3].imshow(inputs[-1][img_idx].argmax(dim=0).cpu().detach().numpy(),cmap='tab10')
-            ax[3].set_title("Classes")
-            plt.show()
-
-            break
-
 
 
 def plt_alpha_ww(details, savefig=None):
@@ -83,14 +48,13 @@ def plt_alpha_ww(details, savefig=None):
     for idx, row in problematic_layers[problematic_layers.alpha > 6].iterrows():
         print(f"  {idx}: α = {row.alpha:.3f}")
 
-def visualize_weights(model_path,savefig=None):
-    model = NewArchitectures.load_from_checkpoint(model_path)
+def visualize_weights(model,savefig=None):
         
     # Créer le WeightWatcher
     watcher = ww.WeightWatcher(model=model)
     
     # Analyser le modèle
-    print(f"Analyse de {model_path}")
+
     details = watcher.analyze()
     
     # Sauvegarder les résultats
@@ -136,30 +100,36 @@ def ww_model(model, savefig=None):
 
 
 def calculate_tensor_gradient(image_tensor):
-    # Assurez-vous que l'image est en niveaux de gris
-    if image_tensor.dim() == 3 and image_tensor.shape[0] == 3:
-        # Convertir en niveaux de gris en prenant la moyenne des canaux
-        gray_tensor = image_tensor.mean(dim=0, keepdim=True)
-    else:
-        gray_tensor = image_tensor
+    # Conserver tous les canaux de l'image
+    gray_tensor = image_tensor
 
     # Définir les noyaux de Sobel pour les gradients en x et y
     sobel_x = torch.tensor([[-1, 0, 1],
                             [-2, 0, 2],
                             [-1, 0, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+    sobel_x = sobel_x.to(image_tensor.device)  # Déplacer le noyau sur le même appareil que l'image
+    sobel_x = sobel_x.expand(gray_tensor.size(1), 1, -1, -1)  # Adapter pour le nombre de canaux
 
     sobel_y = torch.tensor([[-1, -2, -1],
                             [0, 0, 0],
                             [1, 2, 1]], dtype=torch.float32).view(1, 1, 3, 3)
+    sobel_y = sobel_y.to(image_tensor.device)  # Déplacer le noyau sur le même appareil que l'image
+    sobel_y = sobel_y.expand(gray_tensor.size(1), 1, -1, -1)  # Adapter pour le nombre de canaux
 
-    # Calculer les gradients en x et y
-    grad_x = F.conv2d(gray_tensor, sobel_x, padding=1)
-    grad_y = F.conv2d(gray_tensor, sobel_y, padding=1)
+    # Calculer les gradients en x et y pour chaque canal
+    grad_x = F.conv2d(gray_tensor, sobel_x, padding=1, groups=gray_tensor.size(1))
+    grad_y = F.conv2d(gray_tensor, sobel_y, padding=1, groups=gray_tensor.size(1))
 
-    # Calculer la magnitude du gradient
+    # Calculer la magnitude du gradient pour chaque canal
     grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
 
-    # Normaliser la magnitude du gradient
-    grad_magnitude = (grad_magnitude - grad_magnitude.min()) / (grad_magnitude.max() - grad_magnitude.min())
+    # Normaliser la magnitude du gradient pour chaque canal
+    # Nous allons normaliser chaque canal séparément
+    min_vals = grad_magnitude.min()
+    max_vals = grad_magnitude.max()
 
-    return grad_magnitude
+    # Éviter la division par zéro
+    epsilon = 1e-8
+    grad_magnitude_normalized = (grad_magnitude - min_vals) / (max_vals-min_vals + epsilon)
+
+    return grad_magnitude_normalized

@@ -18,6 +18,8 @@ import argparse,json
 import matplotlib.pyplot as plt
 import weightwatcher as ww
 
+import autres
+
 
 
 
@@ -62,9 +64,9 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
         
         loss = F.l1_loss(predictions, targets)
-        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
+        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'])
         
-        self.log("train_loss", masked_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
         
         return loss
 
@@ -74,10 +76,10 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
 
         loss = F.l1_loss(predictions, targets)
-        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
+        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
 
 
-        self.log("val_loss", masked_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
 
         # Update each metrics
         self.metrics['mae'].update(predictions, targets)
@@ -117,10 +119,10 @@ class Base(pl.LightningModule):
 
         # Update metrics as in validation step
         loss = F.l1_loss(predictions, targets)
-        masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
+        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
 
 
-        self.log("test_loss", masked_loss, on_step=False, on_epoch=False, prog_bar=False, batch_size=self.conf['batch_size'])
+        self.log("test_loss", loss, prog_bar=False, batch_size=self.conf['batch_size'])
 
         
         self.metrics_test['mae'].update(predictions, targets)
@@ -183,13 +185,7 @@ class Base(pl.LightningModule):
                             params,
                             weight_decay = self.conf['weight_decay'],
                             lr = self.conf['learning_rate'])
-        
-        # Ecluded for now
-        # LR_scheduler = {"scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
-        #                 "interval": "epoch",                       
-        #                 "monitor": "val_loss",
-        #                 "name": "Learning_rate"}
-        
+
         Plateau_scheduler = {"scheduler":ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=8),
                             "monitor":"val_loss",
                             "interval":"epoch",
@@ -198,25 +194,7 @@ class Base(pl.LightningModule):
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": Plateau_scheduler 
-                }
-        ## Manually handle multiple schedulers
-        return {
-            "optimizer": optimizer,
-            "lr_schedulers": [
-            {
-                "scheduler": StepLR(optimizer, step_size=10, gamma=0.8),
-                "interval": "epoch",
-                "monitor": "val_loss",
-                "name": "StepLR"
-            },
-            {
-                "scheduler": ReduceLROnPlateau(optimizer, mode='min', factor=0.4, patience=10),
-                "interval": "epoch",
-                "monitor": "val_loss",
-                "name": "ReduceLROnPlateau"
-            }
-            ]
-        }
+                }        
 
     def train_dataloader(self):
         ds = Dataset(root_dir=self.conf['root_dir'],sources=self.conf['sources'], split='train', pca=self.conf['pca'], trans=self.train_transforms())
@@ -243,6 +221,72 @@ class Base(pl.LightningModule):
     def test_transforms(self):
         return None
     
+
+
+
+    def ww_alpha_values_plot(self):
+        
+        """
+        Génère les valeurs alpha de WeightWatcher
+        
+        Args:
+            model: Le modèle PyTorch
+            return_figure: Si True, retourne la figure matplotlib, sinon les valeurs alpha
+        
+        Returns:
+            list ou matplotlib.figure.Figure: Valeurs alpha ou figure selon return_figure
+        """
+        # Initialiser WeightWatcher
+        watcher = ww.WeightWatcher(model=model)
+        details = watcher.analyze()
+        
+        # Préparer les données
+        alpha_values = details.alpha.tolist()
+        
+        # Créer le graphique
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Histogramme des valeurs alpha
+        ax.hist(alpha_values, bins=20, color='blue', alpha=0.7, edgecolor='black')
+        ax.set_xlabel("Valeurs Alpha")
+        ax.set_ylabel("Fréquence")
+        ax.set_title("Distribution des valeurs Alpha (Weight Watcher)")
+        
+        # Lignes de référence
+        ax.axvline(x=2, color="r", linestyle="--", label="Seuil surentraîné (α = 2)")
+        ax.axvline(x=6, color="orange", linestyle="--", label="Seuil sous-entraîné (α = 6)")
+        
+        # Ajouter une légende
+        ax.legend()
+        
+        # Ajuster la mise en page
+        plt.tight_layout()
+        
+        return fig
+        
+
+    def  masked_lc_loss(self,loss,inputs,sources,alpha=0):
+        '''
+        Creating a mask that only keep region of interest (vegetation, crops...)
+        '''
+        if 'lc' not in sources:
+            return loss.mean()
+        idx_lc = self.conf['sources'].index('lc') 
+        lc=inputs[idx_lc].argmax(dim=1) #get the class, opposite operatin of onehot encoding
+
+        L=[5,6,7] # classe for forest, vegetation and water
+        L_tensor = torch.tensor(L, device=inputs.device)
+
+         # Créer un masque booléen pour les classes d'intérêt
+        mask = (lc.unsqueeze(-1) == L_tensor.view(1, 1, 1, -1)).any(dim=-1)
+
+        # Redimensionner le masque pour correspondre à la perte
+        mask = mask.unsqueeze(1).float()  # Shape: (batch_size, 1, img_size, img_size)
+
+        # Appliquer le masque à la perte
+        masked_loss = loss * mask + alpha * (1 - mask)
+        return masked_loss.mean()
+
 
 
     @staticmethod
@@ -367,11 +411,11 @@ if __name__ == '__main__':
             devices=1,
             max_epochs=conf['n_epochs']*0,
             num_sanity_val_steps=2,
-            logger=TensorBoardLogger('checkpoints', name='test'+conf['experiment_name']  + "_".join(conf['sources'] + [conf['method']])),
+            logger=TensorBoardLogger('checkpoints', name='test/'+conf['experiment_name']  + "_".join(conf['sources'] + [conf['method']])),
             callbacks=callbacks
         )
         # 7. Training and test
-        trainer.fit(model)
+        # trainer.fit(model)
 
         trainer.test(model)
     if False:

@@ -1098,7 +1098,7 @@ if __name__ == "__main__":
         print(f"Shape d'entrée: {input.shape}")
         print(f"Shape après le modèle: {output.shape}")  # Devrait être (1, 1, input_size, input_size)
 
-    if True: # test de TransformerArchitecure
+    if False: # test de TransformerArchitecure
         import json
         with open('Tparams.json', 'r') as f:
             conf = json.load(f)
@@ -1144,8 +1144,28 @@ if __name__ == "__main__":
         # Testez le modèle
         trainer.test(model)
 
-
-
+    if True: # test get details
+        input_size=256
+        in_channels=16
+        x=torch.randn(8,in_channels,input_size,input_size)
+        model=Transformerswithdetails( 
+                 input_size=256,
+                 num_patches=256, 
+                 embed_dim=144, 
+                 embedding_type='sinusoidal',
+                 dropout=0.1,
+                 in_channels=in_channels, 
+                 patch_size=16,                 
+                 num_layers_transformers=4,
+                 num_heads=8,
+                 mlp_ratio=4.0,
+                 attention_dropout=0.1,
+                 drop_path_rate=0.0,
+                 norm_layer=nn.LayerNorm,
+                 activation='gelu',
+                 return_attention=False)
+        y=model(x)
+        
 
 
 

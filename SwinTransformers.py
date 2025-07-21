@@ -189,7 +189,7 @@ class Swin_UperNet(nn.Module):
     #     regression_output = self.regression_head(upernet_output)
 
     #     return regression_output
-    
+  
 
 class UperNet_swin(nn.Module):
 
@@ -278,12 +278,12 @@ class UperNet_swin(nn.Module):
 
 
 if __name__ == "__main__":
-    x=torch.randn(1,2,256,256)
-    x1=torch.randn(1,1,256,256)
-    config=SwinConfig(image_size=256)
-    model=SwinModel(config)
-    model=SwinTranformers()
-    y=model([x,x1])#,output_hidden_states=True)
+    num_channels=20
+    x=torch.randn(1,num_channels,256,256)
+
+
+    model=Swin_UperNet(num_channels=num_channels)
+    y=model(x)
     print(sum(p.numel() for p in model.parameters()))
     # print(y.keys())
     # for hidden_sate,reshaped in zip(y['hidden_states'],y['reshaped_hidden_states']):
@@ -291,13 +291,6 @@ if __name__ == "__main__":
     print(y.size())
 
 
-    model = Swin_UperNet()
-
-    # Créer un tensor d'entrée d'exemple (batch_size=1, channels=3, height=256, width=256)
-    input_tensor = torch.randn(1, 3, 256, 256)
-
-    # Passer à travers le modèle
-    output = model(input_tensor)
-    print("Output shape:", output.shape)  # Devrait être [1, 1] pour une régression simple
+   
 
 

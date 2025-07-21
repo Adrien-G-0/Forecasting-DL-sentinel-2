@@ -63,7 +63,25 @@ class NewArchitectures(Base):
         
         elif self.conf['method'] == 'late_fusion':
             self.net = lf_(self.conf)
-            
+        elif self.conf['method'] == 'pixel_to_pixel':
+
+            input_channels = 0
+            for source in self.conf['sources']:
+                if source == 'rgb':
+                    input_channels = input_channels + 3
+                if source == 'hs':
+                    input_channels = input_channels + 182
+                if source =='dtm':
+                    input_channels = input_channels + 1
+                if source == 'sar' :
+                    input_channels = input_channels +2
+                if source == 'lc':
+                    input_channels = input_channels +self.conf['num_class_lc']  # should be 8
+                if source == 'sau':
+                    input_channels = input_channels +self.conf['num_class_sau']  # should be 10
+                if source =='esa':
+                    input_channels = input_channels +self.conf['num_class_esa']  # should be 10
+            self.net=Pixel_to_pixel(in_channels=input_channels)
 
         self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
         self.std_dict = self.load_dict(self.conf['std_dict_01'])
@@ -136,6 +154,27 @@ class NewArchitectures(Base):
             # print("flops:" + str(fwd_flops))
 
             output = self.net(batch)
+            return output
+        
+        elif self.conf['method'] == 'pixel_to_pixel':
+            first_flag = True
+            inp = None
+        
+            for source in self.conf['sources']:
+                if first_flag:
+                    inp = components[source]
+                    first_flag = False
+                else:
+                    inp = torch.cat([inp, components[source]], axis=1)
+
+            with torch.device("meta"):
+                model = self.net
+                x = inp
+
+            model_fwd = lambda: model(x)
+            fwd_flops = measure_flops(model, model_fwd)
+            # print("flops:" + str(fwd_flops))
+            output = self.net(inp)
             return output
 
 
@@ -258,8 +297,36 @@ class NewArchitectures(Base):
     def test_transforms(self):
         return self.val_transforms()
         
+### pixel to pixel
 
+class Pixel_to_pixel(torch.nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.in_channels=in_channels
+        self.fc1=torch.nn.Linear(self.in_channels,self.in_channels)
+        self.fc2=torch.nn.Linear(self.in_channels,self.in_channels//2 )
+        self.fc3=torch.nn.Linear(self.in_channels//2,self.in_channels//4)
+        self.fc4=torch.nn.Linear(self.in_channels//4,1)
+        self.relu=torch.nn.ReLU()
+        self.sigmoid=torch.nn.Sigmoid()
 
+    def forward(self,x):
+        x=x.permute(0, 2, 3, 1)
+        x=self.fc1(x)
+        x=self.relu(x)
+
+        x=self.fc2(x)
+        x=self.relu(x)
+
+        x=self.fc3(x)
+        x=self.relu(x)
+
+        x=self.fc4(x)
+        x=self.sigmoid(x)
+
+        x=x.permute(0,  3, 1,2)
+
+        return 2*x -1
 
 
 ###### Creation of the classes for the Unet ######

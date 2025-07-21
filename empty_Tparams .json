@@ -1,5 +1,5 @@
 {
-    "experiment_name": "24_06/T_",
+    "experiment_name": "",
     "n_epochs": 100,
     "batch_size": 8,
     "num_workers": 8,
@@ -28,7 +28,7 @@
     "targets": [
         "ndvi"
     ],
-    "root_dir": "Sorted_Sources",
+    "root_dir": "",
     "num_patches": 256,
     "embed_dim": 128,
     "embedding_type": "sinusoidal",
@@ -111,9 +111,9 @@
             3
         ]
     },
-    "mean_dict_01": "Sources/dict_stats/mean_dict_01.pkl",
-    "std_dict_01": "Sources/dict_stats/std_dict_01.pkl",
-    "max_dict_01": "Sources/dict_stats/max_dict_01.pkl",
-    "max_dict": "Sources/dict_stats/max_dict.pkl",
-    "min_dict": "Sources/dict_stats/min_dict.pkl"
+    "mean_dict_01": "",
+    "std_dict_01": "",
+    "max_dict_01": "",
+    "max_dict": "",
+    "min_dict": ""
 }
