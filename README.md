@@ -123,6 +123,13 @@ A main static method is available the `NewArchitectures.py` file tha can run wit
 
 The file Training&test.py enable multiple training with new model or checkpoints
 
+### Training and Testing
+
+The repository provides two main entry points:
+
+1. `NewArchitectures.py` - Main model implementation with command-line interface
+2. `Training&test.py` - Script for running multiple training sessions
+
 ```bash
 python NewArchitectures.py --json params.json --ckp checkpoint.ckp --test
 ```
