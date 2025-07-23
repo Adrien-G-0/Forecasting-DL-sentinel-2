@@ -121,7 +121,7 @@ Sources/
 
 A main static method is available the `NewArchitectures.py` file tha can run with  the command terminal with the following arguments:
 
-
+The file Training&test.py enable multiple training with new model or checkpoints
 
 ```bash
 python NewArchitectures.py --json params.json --ckp checkpoint.ckp --test
