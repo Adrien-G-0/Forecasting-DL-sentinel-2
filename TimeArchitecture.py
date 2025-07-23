@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Sequential
-
 import numpy as np
 
 
@@ -172,7 +171,6 @@ class TimeArchitecure(torch.nn.Module):
         self.decoder3 = UpsamplingBlock(128, 64, 128)
         self.decoder4 = UpsamplingBlock(64, 1, 64)
 
-        # self.final_conv = torch.nn.Conv2d(64, 1, kernel_size=1) # opération similaire à une couche linéaire mais mieux car préserve l'aspect spatial
         self.activation = torch.nn.Sigmoid()
 
     def forward(self, x, time):
@@ -197,16 +195,17 @@ class TimeArchitecure(torch.nn.Module):
 
 
 
+if __name__ == "__main__":
+    
+    #test
+    test=TimeArchitecure(3)
+    time=2.
+    tensor=torch.randn(1, 3, 256, 256)
+    pol=nn.MaxPool2d(kernel_size=2,stride=2)
 
-#test
-test=TimeArchitecure(3)
-time=2.
-tensor=torch.randn(1, 3, 256, 256)
-pol=nn.MaxPool2d(kernel_size=2,stride=2)
+    output= test(tensor,time)
 
-output= test(tensor,time)
-
-# tensor=torch.randn(1, 64, 256, 256)
-# timeArchitecure=TimeArchitecure(64)
-# output=timeArchitecure(tensor,time)
-print(output.shape)  # Should be (1, 64, 256, 256)
+    # tensor=torch.randn(1, 64, 256, 256)
+    # timeArchitecure=TimeArchitecure(64)
+    # output=timeArchitecure(tensor,time)
+    print(output.shape)  # Should be (1, 64, 256, 256)

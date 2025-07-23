@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
 import math
 import time
@@ -12,11 +11,10 @@ from albumentations.pytorch.transforms import ToTensorV2
 import albumentations as A
 
 from NewBase import Base
-from SwinTransformers import SwinTranformers,Swin_UperNet
+from SwinTransformers import Swin_UperNet
 from middle_fusion import Middle_fusion_en as mf_
 import pytorch_lightning as pl
 
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger

@@ -64,7 +64,6 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
         
         loss = F.l1_loss(predictions, targets)
-        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'])
         
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
         
@@ -76,7 +75,6 @@ class Base(pl.LightningModule):
         predictions = self(inputs)
 
         loss = F.l1_loss(predictions, targets)
-        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
 
 
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.conf['batch_size'])
@@ -119,7 +117,6 @@ class Base(pl.LightningModule):
 
         # Update metrics as in validation step
         loss = F.l1_loss(predictions, targets)
-        # masked_loss= self.masked_lc_loss(loss, inputs, self.conf['sources'], alpha=0)
 
 
         self.log("test_loss", loss, prog_bar=False, batch_size=self.conf['batch_size'])
@@ -133,7 +130,7 @@ class Base(pl.LightningModule):
         predictions_flat = predictions.view(-1)  
         targets_flat = targets.view(-1)   
 
-        if batch_idx in [0,20]:  # Enregistrer seulement pour le premier batch
+        if batch_idx in [0,20]:  # only for first batch
 
             # self.logger.experiment.add_images('test_inputs', torch.cat(inputs,dim=1), batch_idx)   
             self.logger.experiment.add_images('test_targets', targets, batch_idx)   
@@ -409,13 +406,13 @@ if __name__ == '__main__':
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=1,
-            max_epochs=conf['n_epochs']*0,
+            max_epochs=conf['n_epochs'],
             num_sanity_val_steps=2,
             logger=TensorBoardLogger('checkpoints', name='test/'+conf['experiment_name']  + "_".join(conf['sources'] + [conf['method']])),
             callbacks=callbacks
         )
         # 7. Training and test
-        # trainer.fit(model)
+        trainer.fit(model)
 
         trainer.test(model)
     if False:

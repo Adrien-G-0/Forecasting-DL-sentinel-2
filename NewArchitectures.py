@@ -9,7 +9,7 @@ import pickle
 from middle_fusion import Middle_fusion_en as mf_
 from late_fusion import LateFusion as lf_
 from pytorch_lightning.utilities import measure_flops
-
+from class_module import ConvBlock, EncoderBlock
 
 
 class NewArchitectures(Base):
@@ -64,7 +64,7 @@ class NewArchitectures(Base):
         elif self.conf['method'] == 'late_fusion':
             self.net = lf_(self.conf)
         elif self.conf['method'] == 'pixel_to_pixel':
-
+            ### not yet fully tested ###
             input_channels = 0
             for source in self.conf['sources']:
                 if source == 'rgb':
@@ -83,6 +83,7 @@ class NewArchitectures(Base):
                     input_channels = input_channels +self.conf['num_class_esa']  # should be 10
             self.net=Pixel_to_pixel(in_channels=input_channels)
 
+        ### Used for min max normalization
         self.mean_dict = self.load_dict(self.conf['mean_dict_01'])
         self.std_dict = self.load_dict(self.conf['std_dict_01'])
         self.max_dict = self.load_dict(self.conf['max_dict_01'])
@@ -180,6 +181,8 @@ class NewArchitectures(Base):
 
 
     def create_transform_function(self, transform_list):
+        '''Data transformation is a rescale to 256x256; Min-Max normalization;
+        data augmentation is only used for training, it is just uniform rotation for the images'''
         # create transformation function
         def transform_inputs(inps):
             # create transformation
@@ -297,7 +300,7 @@ class NewArchitectures(Base):
     def test_transforms(self):
         return self.val_transforms()
         
-### pixel to pixel
+### pixel to pixel to see if the prediction ise just predicting pixel to pixel
 
 class Pixel_to_pixel(torch.nn.Module):
     def __init__(self, in_channels):
@@ -331,33 +334,7 @@ class Pixel_to_pixel(torch.nn.Module):
 
 ###### Creation of the classes for the Unet ######
 
-class ConvBlock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.bn=torch.nn.BatchNorm2d(out_channels)
-        self.relu = torch.nn.ReLU()
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn(x)
-        x = self.relu(x)
-        return x
     
-class EncoderBlock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv_block1 = ConvBlock(in_channels, out_channels)
-        self.conv_block2 = ConvBlock(out_channels, out_channels)
-        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-
-    def forward(self, x):
-        x = self.conv_block1(x)
-        x = self.conv_block2(x)
-        residual = x
-        output = self.pool(x)
-        return output, residual
-        
 class UpsamplingBlock(torch.nn.Module):
         def __init__(self, in_channels, out_channels, skip_channels):
             super(UpsamplingBlock, self).__init__()
